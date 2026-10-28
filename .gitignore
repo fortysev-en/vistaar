@@ -1,0 +1,14 @@
+# Build output and tooling
+/build/
+/app/build/
+.gradle/
+.idea/
+*.iml
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# OS junk
+.DS_Store
+Thumbs.db
