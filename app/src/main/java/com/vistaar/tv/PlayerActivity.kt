@@ -27,6 +27,7 @@ import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -35,6 +36,8 @@ import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 
 /** The live player: playback logic unchanged, with an overlay for info, controls, a side sheet and an error card. */
 class PlayerActivity : Activity() {
@@ -55,6 +58,7 @@ class PlayerActivity : Activity() {
     private lateinit var tEnd: TextView
     private lateinit var bar: Bar
     private lateinit var qualityBtn: View
+    private lateinit var guideBtn: View
     private lateinit var qualityLabel: TextView
     private lateinit var aspectLabel: TextView
     private lateinit var favIcon: ImageView
@@ -72,11 +76,16 @@ class PlayerActivity : Activity() {
     private var gen = 0 // discards results from superseded zaps
     private var retries = 0
     private var lastId = -1L
+    private var tuneAt = 0L
     private var program: Program? = null
     private var upcoming: Program? = null
     private var panelItems: List<Item> = emptyList()
     private var panelPick: (Int) -> Unit = {}
     private val ui = Handler(Looper.getMainLooper())
+    /** Stream URL + guide for a channel, resolved ahead of time for the neighbouring channels so zapping starts at once. */
+    private class Ready(val cur: Program?, val nxt: Program?, val play: Play, val at: Long)
+    private val ready = ConcurrentHashMap<Long, Ready>()
+    private val prefetcher = Executors.newSingleThreadExecutor()
     private val modes = listOf(AspectRatioFrameLayout.RESIZE_MODE_FIT to "Fit", AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Zoom", AspectRatioFrameLayout.RESIZE_MODE_FILL to "Stretch")
     private var mode = 0
 
@@ -93,21 +102,29 @@ class PlayerActivity : Activity() {
         // The CDN hands out its auth cookie on the master playlist; variants/segments need it replayed.
         if (java.net.CookieHandler.getDefault() == null) java.net.CookieHandler.setDefault(java.net.CookieManager())
 
-        channels = Catalog.playableChannels()
-        index = channels.indexOfFirst { it.id == intent.getLongExtra("id", -1) }
+        val want = intent.getLongExtra("id", -1)
+        channels = (if (want < 0) Catalog.freeChannels() else Catalog.playableChannels()) // free channels zap among themselves
+            .filter { !intent.getBooleanExtra("hd", false) || it.hd } // opened from the HD tab: zap through HD only
+        index = channels.indexOfFirst { it.id == want }
         if (index < 0) return finish()
 
-        player = ExoPlayer.Builder(this).build().apply {
+        player = ExoPlayer.Builder(this)
+            // start playing after 1s of media instead of the 2.5s default
+            .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 50_000, 1_000, 2_000).build()).build().apply {
             playWhenReady = true
             addListener(object : Player.Listener {
                 override fun onPlayerError(e: PlaybackException) {
                     val http = e.cause as? HttpDataSource.InvalidResponseCodeException
                     android.util.Log.e("Vistaar", "player error ${e.errorCodeName}: ${e.cause} uri=${http?.dataSpec?.uri?.let { it.host + it.path }}")
                     // Live token/edge expiry: re-resolve the URL a couple of times instead of dying.
+                    ready.remove(channels[index].id) // its URL may be what expired
                     if (retries++ < 2) { setMeta("Reconnecting…"); reveal(true); tune(index) }
                     else showError("Playback error", "The stream stopped (${e.errorCodeName}). Check your connection and try again.")
                 }
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { updateLabels() }
+                override fun onPlaybackStateChanged(s: Int) {
+                    if (s == Player.STATE_READY && tuneAt != 0L) { android.util.Log.d("Vistaar", "first frame ready ${System.currentTimeMillis() - tuneAt} ms after tune"); tuneAt = 0L }
+                }
             })
         }
         pv = PlayerView(this).apply { useController = false; player = this@PlayerActivity.player }
@@ -149,6 +166,7 @@ class PlayerActivity : Activity() {
         val aspect = control(R.drawable.ic_aspect, "Fit", "Aspect ratio") { cycleAspect() }
         aspectLabel = aspect.getChildAt(1) as TextView
         val guide = control(R.drawable.ic_guide, "Guide", "Programme guide") { startActivity(Intent(this, GuideActivity::class.java).putExtra("id", channels[index].id)) }
+        guideBtn = guide
         val row = LinearLayout(this).apply {
             noClip(); gravity = Gravity.CENTER_VERTICAL
             addView(up, LinearLayout.LayoutParams(px(64), px(64)))
@@ -249,6 +267,7 @@ class PlayerActivity : Activity() {
         val h = selectedVideoHeight()
         qualityLabel.text = "Quality: " + (if (h != null && h > 0) "${h}p" else "Auto")
         aspectLabel.text = modes[mode].second
+        guideBtn.visibility = if (channels[index].url.isEmpty()) View.VISIBLE else View.GONE // free channels have no guide
         val fav = Catalog.isFav(channels[index].id)
         favIcon.setImageResource(if (fav) R.drawable.ic_star else R.drawable.ic_star_outline); favIcon.tag = if (fav) "a" else "p"; favIcon.setColorFilter(if (fav) N.ACCENT else N.TEXT)
         favLabel.text = if (fav) "Favourited" else "Favourite"; star.visibility = if (fav) View.VISIBLE else View.GONE
@@ -368,37 +387,62 @@ class PlayerActivity : Activity() {
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO).clearOverridesOfType(C.TRACK_TYPE_AUDIO).build()
         }
         hideError(); lastId = ch.id; program = null; upcoming = null
+        tuneAt = System.currentTimeMillis()
         showLoading()
         Thread {
             try {
-                val epg = Api.epg(ch.id)
-                val t = System.currentTimeMillis()
-                val cur = epg.firstOrNull { t in it.start..it.end }
-                val nxt = cur?.let { c -> epg.firstOrNull { it.start >= c.end } }
-                val play = Api.streamUrl(ch, cur)
+                val free = ch.url.isNotEmpty() // third-party stream: never send Jio tokens to it
+                val r = ready.remove(ch.id)?.takeIf { System.currentTimeMillis() - it.at < 90_000 } ?: resolve(ch)
+                val cur = r.cur; val nxt = r.nxt; val play = r.play
                 runOnUiThread {
                     if (g != gen) return@runOnUiThread
                     program = cur; upcoming = nxt; Catalog.pushRecent(ch.id)
-                    val headers = Api.authHeaders(ch.id, cur?.srno ?: 0)
-                    val ds = DefaultHttpDataSource.Factory().setUserAgent(Api.UA).setAllowCrossProtocolRedirects(true)
-                        .setDefaultRequestProperties(headers)
+                    val headers = if (free) (if (ch.ref.isEmpty()) emptyMap<String, String>() else mapOf("Referer" to ch.ref)) else Api.authHeaders(ch.id, cur?.srno ?: 0)
+                    val ds = DefaultHttpDataSource.Factory()
+                        .setUserAgent(if (!free) Api.UA else ch.ua.ifEmpty { "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" })
+                        .setAllowCrossProtocolRedirects(true).setDefaultRequestProperties(headers)
                     player.setMediaSource(
                         if (play.dash) DashMediaSource.Factory(ds).createMediaSource(
                             MediaItem.Builder().setUri(play.url).setMimeType(MimeTypes.APPLICATION_MPD)
-                                .setDrmConfiguration(MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                                    .setLicenseUri(play.license).setMultiSession(true).setLicenseRequestHeaders(headers).build())
-                                .build())
+                                .apply {
+                                    if (play.license.isNotEmpty()) setDrmConfiguration(MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+                                        .setLicenseUri(play.license).setMultiSession(true).setLicenseRequestHeaders(headers).build())
+                                }.build())
                         else HlsMediaSource.Factory(ds).setPlaylistParserFactory(NoIFramePlaylistParserFactory())
+                            .setAllowChunklessPreparation(true) // skip fetching a media playlist just to learn the track list
                             .createMediaSource(MediaItem.fromUri(play.url)))
                     player.prepare()
                     showInfo()
+                    prefetch(index + 1); prefetch(index - 1)
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    if (g == gen) showError("Channel unavailable", "${ch.name} can't be played right now. It may not be part of your plan, or the broadcaster is off air.\n(${e.message?.take(90)})")
+                    if (g == gen) showError("Channel unavailable", when {
+                        ch.url.isNotEmpty() -> "${ch.name} can't be played right now. Free streams go offline often, so try another channel."
+                        e.message?.contains("419") == true -> "Your Jio session has expired. Sign out and sign in again from Settings."
+                        else -> "${ch.name} can't be played right now. It may not be part of your plan, or the broadcaster is off air."
+                    } + "\n(${e.message?.take(90)})")
                 }
             }
         }.start()
+    }
+
+    /** Looks up the guide and stream URL for [ch]. Blocking: call off the main thread. */
+    private fun resolve(ch: Channel): Ready {
+        if (ch.url.isNotEmpty()) return Ready(null, null, Play(ch.url, ch.url.substringBefore('?').endsWith(".mpd"), ""), System.currentTimeMillis())
+        val epg = Api.epg(ch.id)
+        val t = System.currentTimeMillis()
+        val cur = epg.firstOrNull { t in it.start..it.end }
+        val nxt = cur?.let { c -> epg.firstOrNull { it.start >= c.end } }
+        return Ready(cur, nxt, Api.streamUrl(ch, cur), System.currentTimeMillis())
+    }
+
+    /** Warms the next/previous Jio channel so a channel change doesn't wait on two round trips. */
+    private fun prefetch(i: Int) {
+        val ch = channels[(i + channels.size) % channels.size]
+        if (ch.url.isNotEmpty() || ready[ch.id]?.let { System.currentTimeMillis() - it.at < 60_000 } == true) return
+        ready.values.removeAll { System.currentTimeMillis() - it.at > 90_000 }
+        prefetcher.execute { try { ready[ch.id] = resolve(ch) } catch (_: Exception) { } }
     }
 
     override fun onKeyDown(code: Int, e: KeyEvent): Boolean {
@@ -426,5 +470,5 @@ class PlayerActivity : Activity() {
 
     override fun onStop() { super.onStop(); player.pause() }
     override fun onStart() { super.onStart(); if (::player.isInitialized) player.play() }
-    override fun onDestroy() { super.onDestroy(); ui.removeCallbacksAndMessages(null); if (::player.isInitialized) player.release() }
+    override fun onDestroy() { super.onDestroy(); prefetcher.shutdownNow(); ui.removeCallbacksAndMessages(null); if (::player.isInitialized) player.release() }
 }

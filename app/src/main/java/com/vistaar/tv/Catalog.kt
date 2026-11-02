@@ -13,6 +13,7 @@ object Epg {
     fun cached(id: Long): List<Program>? = cache[id]?.takeIf { System.currentTimeMillis() - it.first < 120_000 }?.second
 
     fun load(id: Long, done: (List<Program>) -> Unit) {
+        if (id < 0) return done(emptyList()) // free channels have no guide
         cached(id)?.let { return done(it) }
         pool.execute { val l = Api.epg(id); main.post { cache[id] = System.currentTimeMillis() to l; done(l) } }
     }
@@ -43,7 +44,8 @@ object Catalog {
 
     fun playableChannels() = all.filter { it.id in playable }
     fun isFav(id: Long) = id in favs
-    fun favourites() = all.filter { it.id in favs && it.id in playable }
+    fun favourites() = all.filter { it.id in favs && it.id in playable } + Free.channels.filter { it.id in favs }
+    fun freeChannels() = Free.channels
 
     fun toggleFav(id: Long): Boolean {
         if (!favs.remove(id)) favs.add(id)
@@ -59,11 +61,13 @@ object Catalog {
         val l = (listOf(id) + recentIds().filter { it != id }).take(12)
         Store.prefs.edit().putString("recent", l.joinToString(",")).apply()
     }
-    fun recents(): List<Channel> = recentIds().mapNotNull { id -> all.firstOrNull { it.id == id && it.id in playable } }
+    fun recents(): List<Channel> = recentIds().mapNotNull { id ->
+        if (id < 0) Free.channels.firstOrNull { it.id == id } else all.firstOrNull { it.id == id && it.id in playable }
+    }
     fun clearRecents() { Store.prefs.edit().remove("recent").apply() }
 
     /** Number shown for a channel: its position among the channels the plan includes. */
-    fun numberOf(id: Long) = playableChannels().indexOfFirst { it.id == id } + 1
+    fun numberOf(id: Long) = (if (id < 0) Free.channels else playableChannels()).indexOfFirst { it.id == id } + 1
 
     fun clearFavs() {
         favs.clear(); Store.prefs.edit().remove("favs").apply()
@@ -76,6 +80,7 @@ object Catalog {
 
     /** Loads the list and tests every channel (4 at a time); a fresh cache of playable ids skips the test. */
     fun start(force: Boolean) {
+        Free.load(force) { changed() }
         if (!force && (scanning || all.isNotEmpty())) { changed(); return }
         if (favs.isEmpty()) favs.addAll(Store.prefs.getString("favs", "")!!.split(",").mapNotNull { it.toLongOrNull() })
         val g = ++gen
@@ -103,7 +108,7 @@ object Catalog {
         val pool = Executors.newFixedThreadPool(4)
         c.forEach { ch ->
             pool.execute {
-                val ok = try { Api.streamUrl(ch, Api.nowPlaying(ch.id)); true } catch (e: Exception) { false }
+                val ok = try { Api.streamUrl(ch, Api.nowPlaying(ch.id)); true } catch (e: Exception) { android.util.Log.d("Vistaar", "not playable: ${ch.name} (${e.message?.take(60)})"); false }
                 main.post {
                     if (g != gen) return@post
                     if (ok) playable.add(ch.id)

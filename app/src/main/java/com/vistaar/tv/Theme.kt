@@ -73,7 +73,7 @@ internal fun ViewGroup.noClip() { clipChildren = false; clipToPadding = false }
 internal val clockFmt = SimpleDateFormat("h:mm a", Locale.getDefault())
 internal fun fmt(t: Long): String = clockFmt.format(t)
 
-internal fun langName(id: Int) = LANGUAGES[id] ?: "Other"
+internal fun langName(id: Int) = if (id < 0) Free.catName(id) else LANGUAGES[id] ?: "Other"
 
 // ------------------------------------------------------------------ focus
 
@@ -113,6 +113,17 @@ internal fun View.ringOnFocus(ctx: Context, radius: Int, scale: Float = 1.06f) {
         v.background = if (f) rr(N.BG, radius + ctx.px(8), N.TEXT, ctx.px(4)) else null
         v.animate().scaleX(if (f) scale else 1f).scaleY(if (f) scale else 1f).translationZ(if (f) 24f else 0f).setStartDelay(0).setDuration(120).start()
     }
+}
+
+/**
+ * Category row (label + count): white when focused, [N.SEL] when it is the open category, flat otherwise.
+ * It repaints in place, so the open category can change without rebinding rows (a rebind drops focus and flickers).
+ */
+internal fun LinearLayout.paintCat(radius: Int, on: Boolean, focused: Boolean) {
+    background = rr(if (focused) N.TEXT else if (on) N.SEL else Color.TRANSPARENT, radius)
+    (getChildAt(0) as TextView).setTextColor(if (focused) N.INK else if (on) N.TEXT else N.MUTED)
+    (getChildAt(1) as TextView).setTextColor(if (focused) N.INK2 else N.DIM)
+    animate().scaleX(if (focused) 1.02f else 1f).scaleY(if (focused) 1.02f else 1f).translationZ(if (focused) 24f else 0f).setStartDelay(0).setDuration(120).start()
 }
 
 // ------------------------------------------------------------------ small custom views
@@ -382,7 +393,7 @@ class Header(private val a: Activity, private val current: Class<*>) {
             val on = target == current
             return LinearLayout(a).apply {
                 gravity = Gravity.CENTER; focusSkin(a.px(26), if (on) N.SEL else Color.TRANSPARENT, 1.04f)
-                if (label != null) { setPadding(a.px(24), 0, a.px(24), 0); addView(a.txt(label, 22, if (on) N.TEXT else N.MUTED, 500, tag = if (on) "p" else "s")) }
+                if (label != null) { setPadding(a.px(22), 0, a.px(22), 0); addView(a.txt(label, 22, if (on) N.TEXT else N.MUTED, 500, tag = if (on) "p" else "s")) }
                 else addView(a.icon(iconRes, 24, if (on) N.TEXT else N.MUTED, if (on) "p" else "m"), LinearLayout.LayoutParams(a.px(24), a.px(24)))
                 setOnClickListener { a.goTo(target) }
             }
@@ -392,7 +403,7 @@ class Header(private val a: Activity, private val current: Class<*>) {
             gravity = Gravity.CENTER_VERTICAL; noClip(); setPadding(a.px(6), a.px(6), a.px(6), a.px(6))
             background = rr(N.GLASS, a.px(40), N.HAIR + 0x04000000, a.px(1))
             addView(search, LinearLayout.LayoutParams(a.px(52), a.px(52)))
-            listOf("Home" to HomeActivity::class.java, "Live TV" to LiveTvActivity::class.java, "Guide" to GuideActivity::class.java,
+            listOf("Home" to HomeActivity::class.java, "Live TV" to LiveTvActivity::class.java, "Free TV" to FreeTvActivity::class.java, "HD" to HdTvActivity::class.java, "Guide" to GuideActivity::class.java,
                 "Favourites" to FavoritesActivity::class.java).forEach { (l, c) ->
                 addView(item(l, 0, c), LinearLayout.LayoutParams(-2, a.px(52)).apply { marginStart = a.px(4) })
             }
@@ -421,7 +432,7 @@ class Header(private val a: Activity, private val current: Class<*>) {
 
     /** Call from the screen's catalogue listener. */
     fun update() {
-        status.text = if (Catalog.scanning) "Checking plan ${Catalog.scanned}/${Catalog.all.size}" else ""
+        status.text = if (Catalog.scanning) "Checking ${Catalog.scanned}/${Catalog.all.size}" else ""
         status.visibility = if (Catalog.scanning) View.VISIBLE else View.GONE
         refresh.animate().cancel()
         if (Catalog.scanning) refresh.animate().rotationBy(360f).setDuration(900).withEndAction { if (Catalog.scanning) update() }.start()

@@ -6,6 +6,7 @@
 
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"
         android:label="Vistaar"
@@ -25,6 +26,8 @@
             android:exported="false"
             android:windowSoftInputMode="stateHidden|adjustPan" />
         <activity android:name=".LiveTvActivity" android:exported="false" />
+        <activity android:name=".FreeTvActivity" android:exported="false" />
+        <activity android:name=".HdTvActivity" android:exported="false" />
         <activity android:name=".GuideActivity" android:exported="false" />
         <activity android:name=".FavoritesActivity" android:exported="false" />
         <activity android:name=".SearchActivity" android:exported="false" />

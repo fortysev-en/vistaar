@@ -11,7 +11,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-data class Channel(val id: Long, val name: String, val order: Int, val lang: Int, val hd: Boolean, val logo: String)
+/** [url] is set only for free channels (negative id): their stream is the playlist URL itself, with an optional UA / referrer. */
+data class Channel(val id: Long, val name: String, val order: Int, val lang: Int, val hd: Boolean, val logo: String,
+                   val url: String = "", val ua: String = "", val ref: String = "")
 
 /** Language ids as used by JioTV's channel list. Names are from public knowledge of the service, not the APK: unknown ids fall back to "Other". */
 val LANGUAGES = mapOf(1 to "Hindi", 2 to "Marathi", 3 to "Punjabi", 4 to "Urdu", 5 to "Bengali", 6 to "English", 7 to "Malayalam",
@@ -32,6 +34,7 @@ object Api {
     private const val LOGIN = "https://jiotvapi.media.jio.com/userservice/apis/"
     private const val LISTS = "https://jiotvapi.cdn.jio.com/apis/"
     private const val PLAYBACK = "https://jiotvapi.media.jio.com/playback/apis/"
+    private const val TOKENS = "https://auth.media.jio.com/tokenservice/apis/"
     private val JSON = "application/json".toMediaType()
 
     private val http = OkHttpClient.Builder()
@@ -39,6 +42,13 @@ object Api {
 
     private fun call(req: Request): Pair<Int, String> =
         http.newCall(req).execute().use { it.code to (it.body?.string() ?: "") }
+
+    /** Plain GET with no Jio headers or tokens, for third-party playlists. */
+    fun text(url: String): String {
+        val (code, text) = call(Request.Builder().url(url).header("User-Agent", "Vistaar/0.1").build())
+        if (code !in 200..299) throw ApiException("HTTP $code")
+        return text
+    }
 
     private fun loginHeaders(b: Request.Builder) = b
         .header("Content-Type", "application/json")
@@ -139,11 +149,38 @@ object Api {
         "lbcookie" to Store.lb.ifEmpty { "1" }
     )
 
+    /**
+     * HTTP 419 means the access token expired. The app's interceptor answers it by trading the refresh token for a new
+     * one (POST tokenservice v2/refreshtoken) and retrying; this does the same. [stale] is the token the failed call used,
+     * so concurrent callers refresh once. Returns true if a newer token is now stored.
+     */
+    @Synchronized private fun refreshAuth(stale: String): Boolean {
+        if (Store.auth != stale) return true
+        if (Store.refresh.isEmpty()) return false
+        val body = JSONObject().put("appName", APP_NAME).put("deviceId", Store.deviceId).put("refreshToken", Store.refresh)
+            .toString().toRequestBody(JSON)
+        val (code, text) = call(Request.Builder().url(TOKENS + "v2/refreshtoken").post(body)
+            .header("Content-Type", "application/json").header("accesstoken", Store.auth).header("devicetype", "phone")
+            .header("versionCode", "424").header("os", "android").header("uniqueId", Store.uniqueId).build())
+        android.util.Log.d("Vistaar", "refreshtoken -> $code")
+        if (code !in 200..299) return false
+        val root = try { JSONObject(text) } catch (e: Exception) { return false }
+        val auth = (root.optJSONObject("data") ?: root).optString("authToken")
+        if (auth.isEmpty()) return false
+        Store.setAuth(auth)
+        return true
+    }
+
     /** The real app calls this after login/launch; it registers the session server-side before any playback. */
     fun beginSession() {
-        val b = Request.Builder().url("https://tv.media.jio.com/apis/v3.0/beginsession/begin?langId=6")
-        (authHeaders() + mapOf("userId" to Store.subscriberId, "isott" to "false")).forEach { (k, v) -> b.header(k, v) }
-        val (code, text) = call(b.build())
+        fun go(): Int {
+            val b = Request.Builder().url("https://tv.media.jio.com/apis/v3.0/beginsession/begin?langId=6")
+            (authHeaders() + mapOf("userId" to Store.subscriberId, "isott" to "false")).forEach { (k, v) -> b.header(k, v) }
+            return call(b.build()).first
+        }
+        val stale = Store.auth
+        var code = go()
+        if (code == 419 && refreshAuth(stale)) code = go()
         android.util.Log.d("Vistaar", "beginsession -> $code")
     }
 
@@ -153,9 +190,14 @@ object Api {
             .add("stream_type", "Seek").add("channel_id", ch.id.toString())
             .add("programId", srno.toString()).add("showtime", (p?.showtime ?: "000000").replace(":", ""))
             .add("srno", "20" + srno.toString().dropLast(6)).add("begin", "").add("end", "").build()
-        val b = Request.Builder().url(PLAYBACK + "v1.1/geturl?langId=6").post(form)
-        sdkHeaders(ch.id).forEach { (k, v) -> b.header(k, v) }
-        val (code, text) = call(b.build())
+        fun go(): Pair<Int, String> {
+            val b = Request.Builder().url(PLAYBACK + "v1.1/geturl?langId=6").post(form)
+            sdkHeaders(ch.id).forEach { (k, v) -> b.header(k, v) }
+            return call(b.build())
+        }
+        val stale = Store.auth
+        var (code, text) = go()
+        if (code == 419 && refreshAuth(stale)) { val r = go(); code = r.first; text = r.second }
         android.util.Log.d("Vistaar", "geturl ch=${ch.id} -> $code") // never log the body: it carries the stream token
         if (code !in 200..299) throw ApiException("Playback HTTP $code: ${text.take(120)}")
         val j = JSONObject(text)
@@ -172,12 +214,13 @@ object Api {
 /** Session tokens persisted across launches. */
 object Store {
     private lateinit var sp: android.content.SharedPreferences
-    fun init(c: Context) { sp = c.getSharedPreferences("vistaar", Context.MODE_PRIVATE) }
+    fun init(c: Context) { sp = c.getSharedPreferences("vistaar", Context.MODE_PRIVATE); Free.dir = c.cacheDir }
     private fun s(k: String) = sp.getString(k, "") ?: ""
     val deviceId: String get() = s("deviceId").ifEmpty {
         java.util.UUID.randomUUID().toString().replace("-", "").take(16).also { sp.edit().putString("deviceId", it).apply() }
     }
-    val sso get() = s("sso"); val auth get() = s("auth"); val lb get() = s("lb")
+    val sso get() = s("sso"); val auth get() = s("auth"); val lb get() = s("lb"); val refresh get() = s("refresh")
+    fun setAuth(a: String) { sp.edit().putString("auth", a).apply() }
     val uniqueId get() = s("uniqueId"); val subscriberId get() = s("subscriberId"); val uid get() = s("uid")
     val loggedIn get() = sso.isNotEmpty()
     fun save(sso: String, auth: String, refresh: String, lb: String, uniqueId: String, subscriberId: String, uid: String) {

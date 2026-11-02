@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -127,7 +128,7 @@ class LiveTvActivity : Activity() {
         val byLang = playable.groupBy { it.lang }
         val order = byLang.keys.sortedWith(compareBy({ if (it == 1) 0 else if (it == 6) 1 else 2 }, { -byLang.getValue(it).size }))
         val newCats = listOf(Cat(-1, "All channels", playable.size)) + order.map { Cat(it, langName(it), byLang.getValue(it).size) }
-        if (newCats != cats) { cats = newCats; catList.adapter?.notifyDataSetChanged() }
+        if (newCats != cats) updateCats(newCats)
         if (cats.none { it.lang == cat }) cat = -1
         val newList = if (cat == -1) playable else playable.filter { it.lang == cat }
         val firstFill = channels.isEmpty() && newList.isNotEmpty()
@@ -135,6 +136,24 @@ class LiveTvActivity : Activity() {
         empty.visibility = if (channels.isEmpty()) View.VISIBLE else View.GONE
         if (previewCh == null || channels.none { it.id == previewCh?.id }) channels.firstOrNull()?.let { preview(it) }
         if (firstFill) chList.post { chList.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() }
+    }
+
+    /** Counts tick up while the plan is scanned; update them in place so the focused category isn't rebound (that drops focus). */
+    private fun updateCats(newCats: List<Cat>) {
+        val focused = (catList.focusedChild?.tag as? Cat)?.lang
+        val sameKeys = newCats.map { it.lang } == cats.map { it.lang }
+        cats = newCats
+        if (sameKeys) {
+            for (i in 0 until catList.childCount) {
+                val v = catList.getChildAt(i) as LinearLayout
+                val c = cats.getOrNull(catList.getChildAdapterPosition(v)) ?: continue
+                v.tag = c; (v.getChildAt(1) as TextView).text = c.count.toString()
+            }
+        } else {
+            catList.adapter?.notifyDataSetChanged()
+            val pos = cats.indexOfFirst { it.lang == focused }
+            if (focused != null && pos >= 0) catList.post { catList.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus() }
+        }
     }
 
     private fun preview(ch: Channel) {
@@ -160,28 +179,38 @@ class LiveTvActivity : Activity() {
             val row = LinearLayout(c).apply {
                 gravity = Gravity.CENTER_VERTICAL; setPadding(px(20), 0, px(20), 0)
                 layoutParams = RecyclerView.LayoutParams(-1, px(64)).apply { bottomMargin = px(6) }
-                addView(txt("", 22, N.TEXT, 500, tag = "p").apply { id = View.generateViewId() }, LinearLayout.LayoutParams(0, -2, 1f))
-                addView(txt("", 18, N.DIM, mono = true, tag = "s"))
+                addView(txt("", 22, N.TEXT, 500).apply { id = View.generateViewId() }, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(txt("", 18, N.DIM, mono = true))
+                isFocusable = true; isClickable = true
+                setOnFocusChangeListener { v, f ->
+                    val c = v.tag as? Cat ?: return@setOnFocusChangeListener
+                    (v as LinearLayout).paintCat(px(14), c.lang == cat, f)
+                    if (f) ui.postDelayed({ if (v.hasFocus()) select(c.lang) }, 220) // browsing categories switches the list
+                }
             }
             return object : RecyclerView.ViewHolder(row) {}
         }
 
         override fun onBindViewHolder(h: RecyclerView.ViewHolder, p: Int) {
             val c = cats[p]; val row = h.itemView as LinearLayout
-            val on = c.lang == cat
-            (row.getChildAt(0) as TextView).apply { text = c.label; setTextColor(if (on) N.TEXT else N.MUTED); tag = if (on) "p" else "s" }
+            row.tag = c
+            (row.getChildAt(0) as TextView).text = c.label
             (row.getChildAt(1) as TextView).text = c.count.toString()
-            row.focusSkin(px(14), if (on) N.SEL else Color.TRANSPARENT, 1.02f)
-            val skin = row.onFocusChangeListener
-            row.setOnFocusChangeListener { v, f ->
-                skin.onFocusChange(v, f)
-                if (f) ui.postDelayed({ if (v.hasFocus()) select(c.lang) }, 220) // browsing categories switches the list
-            }
+            row.paintCat(px(14), c.lang == cat, row.isFocused)
             row.setOnClickListener { select(c.lang) }
+            row.setOnKeyListener { _, code, _ -> code == KeyEvent.KEYCODE_DPAD_DOWN && h.bindingAdapterPosition == cats.size - 1 } // end of the list: stay
         }
     }
 
-    private fun select(lang: Int) { if (cat != lang) { cat = lang; refresh(); catList.adapter?.notifyDataSetChanged() } }
+    private fun select(lang: Int) {
+        if (cat == lang) return
+        cat = lang; refresh()
+        chList.scrollToPosition(0)
+        for (i in 0 until catList.childCount) { // repaint in place: rebinding would drop focus
+            val v = catList.getChildAt(i) as LinearLayout
+            (v.tag as? Cat)?.let { v.paintCat(px(14), it.lang == cat, v.isFocused) }
+        }
+    }
 
     private inner class ChAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         override fun getItemCount() = channels.size
@@ -225,6 +254,7 @@ class LiveTvActivity : Activity() {
             }
             row.setOnClickListener { play(ch) }
             row.setOnLongClickListener { Catalog.toggleFav(ch.id); notifyItemChanged(p); true }
+            row.setOnKeyListener { _, code, _ -> code == KeyEvent.KEYCODE_DPAD_DOWN && h.bindingAdapterPosition == channels.size - 1 }
         }
     }
 }

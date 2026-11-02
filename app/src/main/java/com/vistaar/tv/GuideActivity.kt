@@ -72,7 +72,7 @@ class GuideActivity : Activity() {
             channels = l; list.adapter?.notifyDataSetChanged()
             if (shown == null && l.isNotEmpty()) {
                 val want = intent.getLongExtra("id", -1)
-                val start = l.firstOrNull { it.id == want } ?: Catalog.recents().firstOrNull() ?: l.first()
+                val start = l.firstOrNull { it.id == want } ?: Catalog.recents().firstOrNull { it in l } ?: l.first()
                 show(start); list.scrollToPosition(l.indexOf(start))
                 list.post { list.findViewHolderForAdapterPosition(l.indexOf(start))?.itemView?.requestFocus() }
             }
