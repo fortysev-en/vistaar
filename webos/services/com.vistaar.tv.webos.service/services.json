@@ -1,0 +1,7 @@
+{
+  "id": "com.vistaar.tv.webos.service",
+  "description": "Vistaar helper service",
+  "services": [
+    { "name": "com.vistaar.tv.webos.service", "description": "Vistaar helper service" }
+  ]
+}

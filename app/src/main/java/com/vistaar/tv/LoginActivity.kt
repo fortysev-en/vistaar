@@ -22,9 +22,10 @@ import android.widget.TextView
  * The calls are the same as before (Api.sendOtp / Api.verifyOtp); only the interface changed.
  */
 class LoginActivity : Activity() {
-    private enum class Step { PHONE, SENDING, OTP, VERIFYING, DONE }
+    private enum class Step { PHONE, SENDING, OTP, VERIFYING, LIMIT, EXPIRING, DONE }
 
     private val ui = Handler(Looper.getMainLooper())
+    private val adding get() = intent.getBooleanExtra("add", false) // opened from Settings by a free-only user
     private var step = Step.PHONE
     private var phone = ""
     private var otp = ""
@@ -56,13 +57,18 @@ class LoginActivity : Activity() {
     private lateinit var doneSub: TextView
     private lateinit var startBtn: View
     private lateinit var key5: View
+    private lateinit var freeBox: LinearLayout
+    private lateinit var limitBlock: LinearLayout
+    private lateinit var limitMsg: TextView
+    private lateinit var limitBtn: View
+    private lateinit var limitLabel: TextView
     private lateinit var backHint: TextView
     private val tick = object : Runnable { override fun run() { if (resendIn > 0) { resendIn--; render(); ui.postDelayed(this, 1000) } } }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (Store.loggedIn) return openHome()
+        if (Store.loggedIn || (Store.freeOnly && !adding)) return openHome()
 
         stepLabel = txt("", 20, N.MUTED, 500).apply { letterSpacing = 0.08f }
         heading = txt("", 72, N.TEXT, 600).apply { letterSpacing = -0.025f; setLineSpacing(0f, 1.05f) }
@@ -72,6 +78,12 @@ class LoginActivity : Activity() {
             addView(View(context).apply { background = rr(N.ACCENT, px(3)) }, LinearLayout.LayoutParams(px(56), px(6)))
             addView(dot2, LinearLayout.LayoutParams(px(56), px(6)).apply { marginStart = px(10) })
         }
+        val freeBtn = LinearLayout(this).apply {
+            gravity = Gravity.CENTER; focusSkin(px(16), N.FILL, 1.04f); setPadding(px(32), 0, px(32), 0)
+            addView(txt("Continue with free channels", 24, N.TEXT, 600, tag = "p"))
+            setOnClickListener { Store.freeOnly = true; if (adding) finish() else openHome() }
+        }
+        freeBox = freeBtn
         val left = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(stepLabel)
@@ -85,6 +97,7 @@ class LoginActivity : Activity() {
             addView(buildOtp(), LinearLayout.LayoutParams(-1, -2))
             addView(buildPad(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(24) })
             addView(buildDone(), LinearLayout.LayoutParams(-1, -1))
+            addView(buildLimit(), LinearLayout.LayoutParams(-1, -1))
         }
         backHint = txt("", 18, N.DIM)
         setContentView(FrameLayout(this).apply {
@@ -97,7 +110,7 @@ class LoginActivity : Activity() {
                 addView(txt("Vistaar", 28, N.TEXT, 600), LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(14) })
             }, FrameLayout.LayoutParams(-2, px(64)).apply { setMargins(px(96), px(54), 0, 0) })
             addView(left, FrameLayout.LayoutParams(-2, -2).apply { setMargins(px(96), px(330), 0, 0) })
-            addView(card, FrameLayout.LayoutParams(px(824), px(840)).apply { setMargins(px(1000), px(120), 0, 0) })
+            addView(card, FrameLayout.LayoutParams(px(824), px(900)).apply { setMargins(px(1000), px(90), 0, 0) })
             addView(LinearLayout(context).apply {
                 addView(txt("0–9  Type digits", 18, N.DIM)); addView(txt("OK  Confirm", 18, N.DIM), LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(28) })
                 addView(backHint, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(28) })
@@ -205,9 +218,32 @@ class LoginActivity : Activity() {
             orientation = LinearLayout.VERTICAL; noClip()
             addView(grid)
             addView(primary, LinearLayout.LayoutParams(-1, px(80)).apply { topMargin = px(24) })
+            addView(freeBox, LinearLayout.LayoutParams(-1, px(64)).apply { topMargin = px(14) })
             addView(footnote, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(24) })
         }
         return padBlock
+    }
+
+    private fun buildLimit(): View {
+        limitMsg = txt("", 22, N.MUTED).apply { gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f) }
+        limitLabel = txt("", 24, N.INK, 600)
+        limitBtn = FrameLayout(this).apply {
+            focusSkin(px(16), N.TEXT, 1.04f); setOnClickListener { if (step == Step.LIMIT) logOutOthers() }
+            addView(limitLabel, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        }
+        val cancel = FrameLayout(this).apply {
+            focusSkin(px(16), N.FILL, 1.04f); setOnClickListener { if (step == Step.LIMIT) cancelLimit() }
+            addView(txt("Cancel", 24, N.TEXT, 500, tag = "p"), FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        }
+        limitBlock = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; noClip(); visibility = View.GONE
+            addView(FrameLayout(context).apply { background = rr(0x29F2B544, px(60)); addView(icon(R.drawable.ic_warning, 56, amber), FrameLayout.LayoutParams(px(56), px(56), Gravity.CENTER)) }, LinearLayout.LayoutParams(px(120), px(120)))
+            addView(txt("Device limit reached", 40, N.TEXT, 600), LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(24) })
+            addView(limitMsg, LinearLayout.LayoutParams(px(640), -2).apply { topMargin = px(14) })
+            addView(limitBtn, LinearLayout.LayoutParams(px(640), px(80)).apply { topMargin = px(36) })
+            addView(cancel, LinearLayout.LayoutParams(px(640), px(68)).apply { topMargin = px(14) })
+        }
+        return limitBlock
     }
 
     private fun buildDone(): View {
@@ -269,11 +305,27 @@ class LoginActivity : Activity() {
         Thread {
             val err = try { Api.verifyOtp(phone, otp) } catch (e: Exception) { "Network error: ${e.message}" }
             runOnUiThread {
-                if (err != null) { step = Step.OTP; error = readable(err); otp = "" } else { step = Step.DONE; ui.removeCallbacks(tick) }
-                render(); if (step == Step.DONE) startBtn.requestFocus() else key5.requestFocus()
+                if (err == Api.DEVICE_LIMIT) { step = Step.LIMIT; error = ""; otp = "" }
+                else if (err != null) { step = Step.OTP; error = readable(err); otp = "" } else { step = Step.DONE; ui.removeCallbacks(tick) }
+                render(); if (step == Step.DONE) startBtn.requestFocus() else if (step == Step.LIMIT) limitBtn.requestFocus() else key5.requestFocus()
             }
         }.start()
     }
+
+    /** Jio says this account is on too many devices: log them all out (as the JioTV app offers), which also signs this TV in. */
+    private fun logOutOthers() {
+        step = Step.EXPIRING; error = ""; render()
+        Thread {
+            val err = try { Api.expireAllUsers() } catch (e: Exception) { "Network error: ${e.message}" }
+            runOnUiThread {
+                if (err != null) { error = readable(err); step = Step.LIMIT }
+                else { step = Step.DONE; ui.removeCallbacks(tick) }
+                render(); if (step == Step.DONE) startBtn.requestFocus() else limitBtn.requestFocus()
+            }
+        }.start()
+    }
+
+    private fun cancelLimit() { step = Step.PHONE; otp = ""; error = ""; render(); key5.requestFocus() }
 
     private fun resend() {
         error = ""; otp = ""; startTimer(); render()
@@ -288,10 +340,11 @@ class LoginActivity : Activity() {
         val onPhone = step == Step.PHONE || step == Step.SENDING
         val onOtp = step == Step.OTP || step == Step.VERIFYING
         val busy = step == Step.SENDING || step == Step.VERIFYING
-        stepLabel.text = (if (step == Step.DONE) "All set" else if (onPhone) "Step 1 of 2" else "Step 2 of 2").uppercase()
-        heading.text = if (onPhone) "Sign in with your mobile" else if (onOtp) "Enter your code" else "Welcome to Vistaar"
+        val onLimit = step == Step.LIMIT || step == Step.EXPIRING
+        stepLabel.text = (if (step == Step.DONE) "All set" else if (onLimit) "Device limit" else if (onPhone) "Step 1 of 2" else "Step 2 of 2").uppercase()
+        heading.text = if (onPhone) "Sign in with your mobile" else if (onOtp) "Enter your code" else if (onLimit) "Too many devices" else "Welcome to Vistaar"
         sub.text = if (onPhone) "Use the number linked to your subscription. We’ll text you a one-time code."
-            else if (onOtp) "Check your phone for a 6-digit code. It expires in 10 minutes." else "Your channels, guide and favourites are ready."
+            else if (onOtp) "Check your phone for a 6-digit code. It expires in 10 minutes." else if (onLimit) "Your Jio account is already signed in on the maximum number of devices." else "Your channels, guide and favourites are ready."
         dot2.background = rr(if (onPhone) 0x2EFFFFFF else N.ACCENT, px(3))
 
         phoneBlock.visibility = if (onPhone) View.VISIBLE else View.GONE
@@ -315,7 +368,12 @@ class LoginActivity : Activity() {
         resendTimer.visibility = if (onOtp && resendIn > 0) View.VISIBLE else View.GONE
         resendTimer.text = "Resend in 0:" + (if (resendIn < 10) "0" else "") + resendIn
 
-        padBlock.visibility = if (step == Step.DONE) View.GONE else View.VISIBLE
+        padBlock.visibility = if (step == Step.DONE || onLimit) View.GONE else View.VISIBLE
+        limitBlock.visibility = if (onLimit) View.VISIBLE else View.GONE
+        limitMsg.text = if (error.isNotEmpty()) error else "Log out the other devices to sign in here. They will need to sign in again; your plan and favourites are not affected."
+        limitMsg.setTextColor(if (error.isNotEmpty()) amber else N.MUTED)
+        limitLabel.text = if (step == Step.EXPIRING) "Logging out…" else "Log out other devices and sign in"
+        limitBtn.isFocusable = step == Step.LIMIT
         val ready = !busy && (if (onPhone) phone.length == 10 else otp.length == 6)
         primaryLabel.text = when (step) { Step.SENDING -> "Sending code…"; Step.VERIFYING -> "Verifying…"; else -> if (onPhone) "Send OTP" else "Log in" }
         primaryLabel.setTextColor(if (ready) N.INK else if (busy) N.TEXT else N.DIM)
@@ -324,8 +382,9 @@ class LoginActivity : Activity() {
         primaryIcon.visibility = if (busy) View.VISIBLE else View.GONE
         if (busy) primaryIcon.animate().rotationBy(360f).setDuration(900).setInterpolator(LinearInterpolator()).withEndAction { if (step == Step.SENDING || step == Step.VERIFYING) primaryIcon.animate().rotationBy(360f).setDuration(900).start() }.start()
         footnote.text = if (onPhone) "Standard SMS rates may apply. We never share your number." else "Signing in on this TV keeps you signed in until you sign out in Settings."
-        backHint.text = "Back  " + if (onOtp) "Change number" else "Exit"
+        backHint.text = "Back  " + if (onLimit) "Cancel" else if (onOtp) "Change number" else "Exit"
 
+        freeBox.visibility = if (step == Step.DONE) View.GONE else View.VISIBLE
         doneBlock.visibility = if (step == Step.DONE) View.VISIBLE else View.GONE
         doneSub.text = "+91 ${fmt(phone)} · this TV stays signed in"
     }
@@ -344,9 +403,9 @@ class LoginActivity : Activity() {
     }
 
     @Deprecated("Deprecated in Java")
-    override fun onBackPressed() { if (step == Step.OTP) changeNumber() else confirmExit() }
+    override fun onBackPressed() { if (step == Step.EXPIRING) return; if (step == Step.LIMIT) cancelLimit() else if (step == Step.OTP) changeNumber() else if (adding) finish() else confirmExit() }
 
     override fun onDestroy() { super.onDestroy(); ui.removeCallbacksAndMessages(null) }
 
-    private fun openHome() { startActivity(Intent(this, HomeActivity::class.java)); finish() }
+    private fun openHome() { if (Store.loggedIn) Store.freeOnly = false; startActivity(Intent(this, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)); finish() }
 }

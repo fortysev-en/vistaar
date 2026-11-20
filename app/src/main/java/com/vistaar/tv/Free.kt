@@ -10,7 +10,7 @@ import java.io.File
  * so favourites survive playlist refreshes. Main-thread API, like [Catalog].
  */
 object Free {
-    const val URL = "https://iptv-org.github.io/iptv/countries/in.m3u"
+    const val DEFAULT = "https://iptv-org.github.io/iptv/countries/in.m3u"
     private const val CACHE_MS = 6 * 3600_000L
     private val main = Handler(Looper.getMainLooper())
     var dir: File? = null
@@ -22,6 +22,51 @@ object Free {
 
     /** Category label for a free channel's [Channel.lang] (-1 for the first category, -2 for the next...). */
     fun catName(lang: Int) = cats.getOrNull(-lang - 1) ?: "Free"
+
+    // iptv-org publishes a playlist per language (ISO 639-3); the country playlist itself says nothing about language.
+    private val LANG_FILES = mapOf(1 to "hin", 2 to "mar", 3 to "pan", 4 to "urd", 5 to "ben", 6 to "eng", 7 to "mal", 8 to "tam", 9 to "guj",
+        10 to "ori", 11 to "tel", 12 to "bho", 13 to "kan", 14 to "asm", 15 to "nep", 16 to "fra")
+    private var langIds: Set<Long>? = null
+    private var langKey = ""
+
+    /** Free channels limited to the languages chosen on first run. Falls back to everything if the language lists are missing or match nothing (custom playlists). */
+    val shown: List<Channel> get() { val ids = langIds; return if (ids == null || channels.none { it.id in ids }) channels else channels.filter { it.id in ids } }
+
+    /** Fetches the language lists for the chosen languages (cached 6 h). Cheap to call repeatedly: it only works when the choice changed. */
+    fun loadLangs(done: () -> Unit) {
+        val codes = Store.langs.mapNotNull { LANG_FILES[it] }.sorted()
+        val key = codes.joinToString(",")
+        if (key == langKey) return
+        langKey = key
+        if (codes.isEmpty()) { langIds = null; done(); return }
+        Thread {
+            val ids = HashSet<Long>(); var ok = false
+            for (c in codes) try {
+                parse(cachedText("lang-$c.m3u", "https://iptv-org.github.io/iptv/languages/$c.m3u", false)).first?.first?.forEach { ids.add(it.id) }; ok = true
+            } catch (_: Exception) { }
+            main.post { if (langKey == key) { langIds = if (ok) ids else null; if (!ok) langKey = ""; done() } }
+        }.start()
+    }
+
+    /** Switches to another playlist: fetches [url] first and only keeps it if it parses, so a bad link never wipes the list. */
+    fun switchTo(url: String, done: (String?) -> Unit) {
+        Thread {
+            var text = ""; var parsed: Pair<List<Channel>, List<String>>? = null; var err: String? = null
+            try {
+                text = Api.text(url)
+                if (!text.trimStart().startsWith("#EXTM3U")) throw ApiException("That link is not an M3U playlist")
+                val r = parse(text); parsed = r.first; err = r.second
+                if (parsed != null) File(dir, cacheName(url)).writeText(text)
+            } catch (e: Exception) { err = e.message ?: e.toString() }
+            main.post {
+                val p = parsed
+                if (p == null) { done(err ?: "Could not load that playlist"); return@post }
+                Store.playlistUrl = url; channels = p.first; cats = p.second; error = null; done(null)
+            }
+        }.start()
+    }
+
+    private fun cacheName(url: String = Store.playlistUrl) = "free-" + Integer.toHexString(url.hashCode()) + ".m3u"
 
     fun load(force: Boolean, done: () -> Unit) {
         if (loading || (!force && channels.isNotEmpty())) return
@@ -36,11 +81,13 @@ object Free {
         }.start()
     }
 
-    private fun fetch(force: Boolean): String {
-        val f = File(dir, "free.m3u")
+    private fun fetch(force: Boolean) = cachedText(cacheName(), Store.playlistUrl, force)
+
+    private fun cachedText(name: String, url: String, force: Boolean): String {
+        val f = File(dir, name)
         if (!force && f.exists() && System.currentTimeMillis() - f.lastModified() < CACHE_MS) return f.readText()
         return try {
-            Api.text(URL).also { if (!it.trimStart().startsWith("#EXTM3U")) throw ApiException("Not a playlist"); f.writeText(it) }
+            Api.text(url).also { if (!it.trimStart().startsWith("#EXTM3U")) throw ApiException("Not a playlist"); f.writeText(it) }
         } catch (e: Exception) { if (f.exists()) f.readText() else throw e } // stale list beats no list
     }
 

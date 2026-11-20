@@ -77,14 +77,14 @@ class PlayerActivity : Activity() {
     private var retries = 0
     private var lastId = -1L
     private var tuneAt = 0L
+    private var audioDone = -1L // channel whose remembered audio language has been applied
     private var program: Program? = null
     private var upcoming: Program? = null
     private var panelItems: List<Item> = emptyList()
     private var panelPick: (Int) -> Unit = {}
     private val ui = Handler(Looper.getMainLooper())
     /** Stream URL + guide for a channel, resolved ahead of time for the neighbouring channels so zapping starts at once. */
-    private class Ready(val cur: Program?, val nxt: Program?, val play: Play, val at: Long)
-    private val ready = ConcurrentHashMap<Long, Ready>()
+    private val ready = ConcurrentHashMap<Long, Streams.Resolved>()
     private val prefetcher = Executors.newSingleThreadExecutor()
     private val modes = listOf(AspectRatioFrameLayout.RESIZE_MODE_FIT to "Fit", AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Zoom", AspectRatioFrameLayout.RESIZE_MODE_FILL to "Stretch")
     private var mode = 0
@@ -99,8 +99,6 @@ class PlayerActivity : Activity() {
         super.onCreate(b)
         Store.init(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        // The CDN hands out its auth cookie on the master playlist; variants/segments need it replayed.
-        if (java.net.CookieHandler.getDefault() == null) java.net.CookieHandler.setDefault(java.net.CookieManager())
 
         val want = intent.getLongExtra("id", -1)
         channels = (if (want < 0) Catalog.freeChannels() else Catalog.playableChannels()) // free channels zap among themselves
@@ -119,10 +117,11 @@ class PlayerActivity : Activity() {
                     // Live token/edge expiry: re-resolve the URL a couple of times instead of dying.
                     ready.remove(channels[index].id) // its URL may be what expired
                     if (retries++ < 2) { setMeta("Reconnecting…"); reveal(true); tune(index) }
-                    else showError("Playback error", "The stream stopped (${e.errorCodeName}). Check your connection and try again.")
+                    else { Catalog.markBad(channels[index].id); showError("Playback error", "The stream stopped (${e.errorCodeName}). Check your connection and try again.") }
                 }
-                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { updateLabels() }
+                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { updateLabels(); applySavedAudio() }
                 override fun onPlaybackStateChanged(s: Int) {
+                    if (s == Player.STATE_READY) Catalog.clearBad(channels[index].id)
                     if (s == Player.STATE_READY && tuneAt != 0L) { android.util.Log.d("Vistaar", "first frame ready ${System.currentTimeMillis() - tuneAt} ms after tune"); tuneAt = 0L }
                 }
             })
@@ -343,9 +342,28 @@ class PlayerActivity : Activity() {
         }
         if (items.isEmpty()) { setMeta("No alternative audio tracks on this channel"); reveal(false); return }
         openPanel("Audio", items) { i ->
+            audioKey(tracks[i].third).takeIf { it.isNotEmpty() }?.let { Store.setAudioPref(channels[index].id, it) } // remembered for this channel
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                 .setOverrideForType(TrackSelectionOverride(tracks[i].first, tracks[i].second)).build()
             closePanel()
+        }
+    }
+
+    private fun audioKey(f: androidx.media3.common.Format) = f.language?.takeIf { it.isNotEmpty() && it != "und" } ?: f.label ?: ""
+
+    /** Re-selects the audio language the user last chose on this channel, once its tracks are known. */
+    private fun applySavedAudio() {
+        val ch = channels[index]
+        if (audioDone == ch.id) return
+        val groups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        if (groups.isEmpty()) return
+        audioDone = ch.id
+        val pref = Store.audioPref(ch.id).ifEmpty { return }
+        for (g in groups) for (i in 0 until g.length) {
+            if (!g.isTrackSupported(i) || audioKey(g.getTrackFormat(i)) != pref) continue
+            if (!g.isTrackSelected(i)) player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i)).build()
+            return
         }
     }
 
@@ -386,31 +404,22 @@ class PlayerActivity : Activity() {
             retries = 0
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO).clearOverridesOfType(C.TRACK_TYPE_AUDIO).build()
         }
+        if (ch.lang > 0) { // no saved choice: prefer the channel's own language, then the user's chosen ones
+            val prefer = (listOfNotNull(LANG_CODES[ch.lang]) + Store.langs.mapNotNull { LANG_CODES[it] }).distinct()
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setPreferredAudioLanguages(*prefer.toTypedArray()).build()
+        }
         hideError(); lastId = ch.id; program = null; upcoming = null
         tuneAt = System.currentTimeMillis()
         showLoading()
         Thread {
             try {
                 val free = ch.url.isNotEmpty() // third-party stream: never send Jio tokens to it
-                val r = ready.remove(ch.id)?.takeIf { System.currentTimeMillis() - it.at < 90_000 } ?: resolve(ch)
+                val r = ready.remove(ch.id)?.takeIf { System.currentTimeMillis() - it.at < 90_000 } ?: Streams.resolve(ch)
                 val cur = r.cur; val nxt = r.nxt; val play = r.play
                 runOnUiThread {
                     if (g != gen) return@runOnUiThread
                     program = cur; upcoming = nxt; Catalog.pushRecent(ch.id)
-                    val headers = if (free) (if (ch.ref.isEmpty()) emptyMap<String, String>() else mapOf("Referer" to ch.ref)) else Api.authHeaders(ch.id, cur?.srno ?: 0)
-                    val ds = DefaultHttpDataSource.Factory()
-                        .setUserAgent(if (!free) Api.UA else ch.ua.ifEmpty { "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" })
-                        .setAllowCrossProtocolRedirects(true).setDefaultRequestProperties(headers)
-                    player.setMediaSource(
-                        if (play.dash) DashMediaSource.Factory(ds).createMediaSource(
-                            MediaItem.Builder().setUri(play.url).setMimeType(MimeTypes.APPLICATION_MPD)
-                                .apply {
-                                    if (play.license.isNotEmpty()) setDrmConfiguration(MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                                        .setLicenseUri(play.license).setMultiSession(true).setLicenseRequestHeaders(headers).build())
-                                }.build())
-                        else HlsMediaSource.Factory(ds).setPlaylistParserFactory(NoIFramePlaylistParserFactory())
-                            .setAllowChunklessPreparation(true) // skip fetching a media playlist just to learn the track list
-                            .createMediaSource(MediaItem.fromUri(play.url)))
+                    player.setMediaSource(Streams.source(ch, play, cur?.srno ?: 0))
                     player.prepare()
                     showInfo()
                     prefetch(index + 1); prefetch(index - 1)
@@ -427,22 +436,12 @@ class PlayerActivity : Activity() {
         }.start()
     }
 
-    /** Looks up the guide and stream URL for [ch]. Blocking: call off the main thread. */
-    private fun resolve(ch: Channel): Ready {
-        if (ch.url.isNotEmpty()) return Ready(null, null, Play(ch.url, ch.url.substringBefore('?').endsWith(".mpd"), ""), System.currentTimeMillis())
-        val epg = Api.epg(ch.id)
-        val t = System.currentTimeMillis()
-        val cur = epg.firstOrNull { t in it.start..it.end }
-        val nxt = cur?.let { c -> epg.firstOrNull { it.start >= c.end } }
-        return Ready(cur, nxt, Api.streamUrl(ch, cur), System.currentTimeMillis())
-    }
-
     /** Warms the next/previous Jio channel so a channel change doesn't wait on two round trips. */
     private fun prefetch(i: Int) {
         val ch = channels[(i + channels.size) % channels.size]
         if (ch.url.isNotEmpty() || ready[ch.id]?.let { System.currentTimeMillis() - it.at < 60_000 } == true) return
         ready.values.removeAll { System.currentTimeMillis() - it.at > 90_000 }
-        prefetcher.execute { try { ready[ch.id] = resolve(ch) } catch (_: Exception) { } }
+        prefetcher.execute { try { ready[ch.id] = Streams.resolve(ch) } catch (_: Exception) { } }
     }
 
     override fun onKeyDown(code: Int, e: KeyEvent): Boolean {

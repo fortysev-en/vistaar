@@ -29,7 +29,7 @@ class FavoritesActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.loggedIn) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (!Store.hasAccess) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
         header = Header(this, FavoritesActivity::class.java)
         adapter = GridAdapter(this, 400, 225, { ch -> if (editing) remove(ch) else play(ch) }, { remove(it) })
         grid = RecyclerView(this).apply {
@@ -71,7 +71,7 @@ class FavoritesActivity : Activity() {
                 addView(txt("Hold OK on any channel to keep it here for quick access.", 24, N.MUTED), LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(12) })
                 addView(LinearLayout(context).apply {
                     gravity = Gravity.CENTER; focusSkin(px(14), N.TEXT, 1.04f); setPadding(px(36), 0, px(36), 0)
-                    addView(txt("Browse Live TV", 24, N.INK, 600)); setOnClickListener { goTo(LiveTvActivity::class.java) }
+                    addView(txt("Browse Jio TV", 24, N.INK, 600)); setOnClickListener { goTo(LiveTvActivity::class.java) }
                 }, LinearLayout.LayoutParams(-2, px(68)).apply { topMargin = px(40) })
             }, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER).apply { topMargin = px(60) })
         }
@@ -82,7 +82,7 @@ class FavoritesActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (!Store.loggedIn) return
+        if (!Store.hasAccess) return
         Catalog.onChange = { header.update(); refresh() }
         Catalog.start(false); refresh()
     }

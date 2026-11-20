@@ -28,7 +28,7 @@ class SearchActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.loggedIn) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (!Store.hasAccess) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
         header = Header(this, SearchActivity::class.java)
 
         queryText = txt("", 36, N.TEXT, 500).apply { maxLines = 1 }
@@ -92,7 +92,7 @@ class SearchActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (!Store.loggedIn) return
+        if (!Store.hasAccess) return
         Catalog.onChange = { header.update(); update() }
         Catalog.start(false); update()
     }

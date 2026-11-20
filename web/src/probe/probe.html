@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1920, height=1080">
+<title>Vistaar test</title>
+<style>
+:root{--bg:#07080a;--surface:#16191f;--text:#f5f6f8;--muted:#a3a9b4;--accent:#5aa9ff;--ok:#4cd07d;--bad:#ff6b6b;--warn:#f2b544}
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:var(--bg);color:var(--text);font-family:Roboto,Arial,sans-serif}
+#app{padding:54px 96px;height:100%}
+h1{font-size:48px;margin:0 0 8px;font-weight:600}.sub{color:var(--muted);font-size:24px;margin-bottom:28px;max-width:1100px;line-height:1.35}
+.row{display:flex;gap:56px}.col{flex:1}
+.pad{display:grid;grid-template-columns:repeat(3,150px);gap:12px;margin-top:20px}
+.btn{height:76px;border-radius:16px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:32px;border:2px solid transparent}
+.btn.wide{grid-column:span 3;font-size:26px}.btn.focus{background:#f5f6f8;color:#07080a;transform:scale(1.04)}
+.field{font:40px monospace;letter-spacing:.06em;background:var(--surface);border-radius:20px;padding:20px 28px;min-width:520px;height:88px}
+.err{color:var(--warn);font-size:22px;min-height:30px;margin-top:10px}
+#log{font:22px/1.5 monospace;white-space:pre-wrap}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.dim{color:var(--muted)}
+video{width:640px;height:360px;background:#000;border-radius:16px}
+.box{background:var(--surface);border-radius:20px;padding:24px 30px;margin-top:20px;font:24px/1.5 monospace}
+</style></head>
+<body><div id="app"></div><script src="app.js"></script></body></html>

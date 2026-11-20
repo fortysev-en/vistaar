@@ -1,0 +1,7 @@
+{
+  "id": "com.vistaar.probe.webos.service",
+  "description": "Vistaar test helper service",
+  "services": [
+    { "name": "com.vistaar.probe.webos.service", "description": "Vistaar test helper service" }
+  ]
+}

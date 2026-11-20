@@ -15,10 +15,11 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
-/** Live TV: categories (languages) | channel list | preview of the focused channel. */
+/** Jio TV: categories (genre or language)  | channel list | preview of the focused channel. */
 class LiveTvActivity : Activity() {
     private data class Cat(val lang: Int, val label: String, val count: Int) // lang -1 = all
 
@@ -43,13 +44,18 @@ class LiveTvActivity : Activity() {
     private var cat = -1
     private var channels: List<Channel> = emptyList()
     private var previewCh: Channel? = null
+    private val pp by lazy { PreviewPlayer(this) }
+    private var byGenre = true
+    private lateinit var tabGenre: LinearLayout
+    private lateinit var tabLang: LinearLayout
     private val ui = Handler(Looper.getMainLooper())
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.loggedIn) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (!Store.hasAccess) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
         header = Header(this, LiveTvActivity::class.java)
+        byGenre = Store.prefs.getBoolean("liveByGenre", true)
         backdrop = ArtView(this).apply { alpha = 0.28f }
 
         catList = RecyclerView(this).apply { layoutManager = LinearLayoutManager(context); adapter = CatAdapter(); itemAnimator = null; noClip(); setPadding(px(8), px(4), px(8), px(4)) }
@@ -73,6 +79,7 @@ class LiveTvActivity : Activity() {
         val artBox = FrameLayout(this).apply {
             clipRound(px(24))
             addView(pArt, FrameLayout.LayoutParams(-1, -1))
+            addView(pp.view, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0x0007080A, 0xBF07080A.toInt())) }, FrameLayout.LayoutParams(-1, -1))
             addView(liveBadge(), FrameLayout.LayoutParams(-2, -2).apply { setMargins(px(20), px(20), 0, 0) })
             addView(pLogo, FrameLayout.LayoutParams(px(64), px(64), Gravity.BOTTOM).apply { setMargins(px(20), 0, 0, px(20)) })
@@ -97,7 +104,20 @@ class LiveTvActivity : Activity() {
         }
         val body = LinearLayout(this).apply {
             noClip()
-            addView(catList, LinearLayout.LayoutParams(px(316), -1))
+            fun tab(label: String, genre: Boolean) = LinearLayout(context).apply {
+                gravity = Gravity.CENTER; setPadding(px(12), 0, px(12), 0)
+                addView(txt(label, 20, N.TEXT, 500, tag = "p"))
+                setOnClickListener { if (byGenre != genre) { byGenre = genre; Store.prefs.edit().putBoolean("liveByGenre", genre).apply(); cat = -1; refresh(); paintTabs() } }
+            }
+            tabGenre = tab("Genre", true); tabLang = tab("Language", false); paintTabs()
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL; noClip()
+                addView(LinearLayout(context).apply {
+                    noClip(); setPadding(px(8), px(4), px(8), px(8))
+                    addView(tabGenre, LinearLayout.LayoutParams(0, px(52), 1f)); addView(tabLang, LinearLayout.LayoutParams(0, px(52), 1f).apply { marginStart = px(8) })
+                })
+                addView(catList, LinearLayout.LayoutParams(-1, 0, 1f))
+            }, LinearLayout.LayoutParams(px(316), -1))
             addView(FrameLayout(context).apply { noClip(); addView(chList, FrameLayout.LayoutParams(-1, -1)); addView(empty, FrameLayout.LayoutParams(-2, -2).apply { topMargin = px(40); marginStart = px(24) }) },
                 LinearLayout.LayoutParams(px(716), -1).apply { marginStart = px(32) })
             addView(aside, LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = px(48) })
@@ -113,26 +133,37 @@ class LiveTvActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (!Store.loggedIn) return
+        if (!Store.hasAccess) return
         Catalog.onChange = { refresh() }
+        previewCh?.let { pp.show(it) }
         Catalog.start(false); refresh()
     }
 
-    override fun onPause() { super.onPause(); Catalog.onChange = null }
+    override fun onPause() { super.onPause(); Catalog.onChange = null; pp.release() }
 
     private fun play(ch: Channel) { startActivity(Intent(this, PlayerActivity::class.java).putExtra("id", ch.id)) }
 
     private fun refresh() {
         header.update()
         val playable = Catalog.playableChannels()
-        val byLang = playable.groupBy { it.lang }
-        val order = byLang.keys.sortedWith(compareBy({ if (it == 1) 0 else if (it == 6) 1 else 2 }, { -byLang.getValue(it).size }))
-        val newCats = listOf(Cat(-1, "All channels", playable.size)) + order.map { Cat(it, langName(it), byLang.getValue(it).size) }
+        val key = { c: Channel -> if (byGenre) (if (c.cat in GENRES) c.cat else 0) else c.lang }
+        val byLang = playable.groupBy(key)
+        val order = if (byGenre) (GENRES.keys + 0).filter { it in byLang }
+            else byLang.keys.sortedWith(compareBy({ if (it == 1) 0 else if (it == 6) 1 else 2 }, { -byLang.getValue(it).size }))
+        val newCats = listOf(Cat(-1, "All channels", playable.size)) + order.map { Cat(it, if (byGenre) GENRES[it] ?: "Other" else langName(it), byLang.getValue(it).size) }
         if (newCats != cats) updateCats(newCats)
         if (cats.none { it.lang == cat }) cat = -1
-        val newList = if (cat == -1) playable else playable.filter { it.lang == cat }
+        val newList = if (cat == -1) playable else playable.filter { key(it) == cat }
         val firstFill = channels.isEmpty() && newList.isNotEmpty()
-        if (newList != channels) { channels = newList; chList.adapter?.notifyDataSetChanged() }
+        if (newList != channels) { // diff, don't rebind: the scan adds channels while the user is browsing and a rebind drops focus
+            val old = channels; channels = newList
+            DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+                override fun getOldListSize() = old.size
+                override fun getNewListSize() = newList.size
+                override fun areItemsTheSame(o: Int, n: Int) = old[o].id == newList[n].id
+                override fun areContentsTheSame(o: Int, n: Int) = o == n && old[o] == newList[n] // moved rows rebind: their number changed
+            }).dispatchUpdatesTo(chList.adapter!!)
+        }
         empty.visibility = if (channels.isEmpty()) View.VISIBLE else View.GONE
         if (previewCh == null || channels.none { it.id == previewCh?.id }) channels.firstOrNull()?.let { preview(it) }
         if (firstFill) chList.post { chList.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() }
@@ -159,6 +190,7 @@ class LiveTvActivity : Activity() {
     private fun preview(ch: Channel) {
         if (previewCh?.id == ch.id) return
         previewCh = ch
+        pp.show(ch)
         backdrop.setStyle(ch.id.toInt()); pArt.setStyle(ch.id.toInt()); pLogo.bind(ch)
         pLang.text = langName(ch.lang) + if (ch.hd) " · HD" else ""
         pSub.text = "${ch.name} · ${Catalog.numberOf(ch.id)}"; pTitle.text = ch.name; pMeta.text = ""; pDesc.text = ""
@@ -198,8 +230,25 @@ class LiveTvActivity : Activity() {
             (row.getChildAt(1) as TextView).text = c.count.toString()
             row.paintCat(px(14), c.lang == cat, row.isFocused)
             row.setOnClickListener { select(c.lang) }
-            row.setOnKeyListener { _, code, _ -> code == KeyEvent.KEYCODE_DPAD_DOWN && h.bindingAdapterPosition == cats.size - 1 } // end of the list: stay
+            row.setOnKeyListener { _, code, e -> catList.stepFocus(h.bindingAdapterPosition, code, e, cats.size) }
         }
+    }
+
+    /** Down on the last channel stays put; Left goes back to the open category, not whichever row is nearest. */
+    private fun chKey(code: Int, e: KeyEvent, pos: Int): Boolean {
+        if (code == KeyEvent.KEYCODE_DPAD_LEFT && e.action == KeyEvent.ACTION_DOWN) {
+            val pos = cats.indexOfFirst { it.lang == cat }.coerceAtLeast(0)
+            (catList.layoutManager as LinearLayoutManager).scrollToPosition(pos)
+            catList.post { catList.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus() }
+            return true
+        }
+        return chList.stepFocus(pos, code, e, channels.size)
+    }
+
+    private fun paintTabs() {
+        tabGenre.focusSkin(px(14), if (byGenre) N.SEL else N.FILL, 1.03f)
+        tabLang.focusSkin(px(14), if (!byGenre) N.SEL else N.FILL, 1.03f)
+        listOf(tabGenre, tabLang).forEach { if (it.isFocused) it.background = rr(N.TEXT, px(14)) } // focusSkin reset the fill under the cursor
     }
 
     private fun select(lang: Int) {
@@ -246,7 +295,7 @@ class LiveTvActivity : Activity() {
             @Suppress("UNCHECKED_CAST") val v = row.tag as Array<Any?>
             v[6] = ch
             (v[0] as TextView).text = Catalog.numberOf(ch.id).toString(); (v[1] as LogoBox).bind(ch)
-            (v[2] as TextView).text = ch.name; (v[3] as TextView).text = langName(ch.lang); (v[4] as Bar).progress = 0f
+            (v[2] as TextView).text = if (Catalog.isBad(ch.id)) "${ch.name}  ·  may not play" else ch.name; (v[3] as TextView).text = langName(ch.lang); (v[4] as Bar).progress = 0f
             (v[5] as View).visibility = if (Catalog.isFav(ch.id)) View.VISIBLE else View.GONE
             Epg.load(ch.id) { list ->
                 if (h.bindingAdapterPosition != p || channels.getOrNull(p)?.id != ch.id) return@load
@@ -254,7 +303,7 @@ class LiveTvActivity : Activity() {
             }
             row.setOnClickListener { play(ch) }
             row.setOnLongClickListener { Catalog.toggleFav(ch.id); notifyItemChanged(p); true }
-            row.setOnKeyListener { _, code, _ -> code == KeyEvent.KEYCODE_DPAD_DOWN && h.bindingAdapterPosition == channels.size - 1 }
+            row.setOnKeyListener { _, code, e -> chKey(code, e, h.bindingAdapterPosition) }
         }
     }
 }

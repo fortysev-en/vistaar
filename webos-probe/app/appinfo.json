@@ -1,0 +1,13 @@
+{
+  "id": "com.vistaar.probe.webos",
+  "version": "0.0.1",
+  "vendor": "fortyseven",
+  "type": "web",
+  "main": "index.html",
+  "title": "Vistaar Test",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "resolution": "1920x1080",
+  "disallowScrollingInMainFrame": true,
+  "requiredACG": []
+}
