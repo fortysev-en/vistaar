@@ -32,7 +32,7 @@ class GuideActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.loggedIn) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (!Store.hasAccess) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
         header = Header(this, GuideActivity::class.java)
         list = RecyclerView(this).apply { layoutManager = LinearLayoutManager(context); adapter = Rows(); itemAnimator = null; noClip(); setPadding(px(8), px(8), px(8), px(40)) }
         title = txt("", 40, N.TEXT, 600); sub = txt("", 22, N.MUTED)
@@ -59,7 +59,7 @@ class GuideActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (!Store.loggedIn) return
+        if (!Store.hasAccess) return
         Catalog.onChange = { header.update(); refresh() }
         Catalog.start(false); refresh()
     }

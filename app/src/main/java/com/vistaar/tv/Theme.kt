@@ -26,6 +26,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import android.view.KeyEvent
 import androidx.recyclerview.widget.RecyclerView
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -119,6 +120,23 @@ internal fun View.ringOnFocus(ctx: Context, radius: Int, scale: Float = 1.06f) {
  * Category row (label + count): white when focused, [N.SEL] when it is the open category, flat otherwise.
  * It repaints in place, so the open category can change without rebinding rows (a rebind drops focus and flickers).
  */
+/**
+ * Up/Down inside a list: moves to the neighbouring row even when it isn't laid out yet (fast key repeat), so focus can never leak into
+ * another column. Down on the last row stays put; Up on the first row is left to the screen (header or tabs above).
+ */
+internal fun RecyclerView.stepFocus(from: Int, code: Int, e: KeyEvent, count: Int): Boolean {
+    val to = when (code) { KeyEvent.KEYCODE_DPAD_DOWN -> from + 1; KeyEvent.KEYCODE_DPAD_UP -> from - 1; else -> return false }
+    if (from < 0) return true // row is being rebound: swallow rather than let focus jump
+    if (to >= count) return true
+    if (to < 0) return false
+    if (e.action == KeyEvent.ACTION_DOWN) {
+        val vh = findViewHolderForAdapterPosition(to)
+        if (vh != null) vh.itemView.requestFocus()
+        else { scrollToPosition(to); post { findViewHolderForAdapterPosition(to)?.itemView?.requestFocus() } }
+    }
+    return true
+}
+
 internal fun LinearLayout.paintCat(radius: Int, on: Boolean, focused: Boolean) {
     background = rr(if (focused) N.TEXT else if (on) N.SEL else Color.TRANSPARENT, radius)
     (getChildAt(0) as TextView).setTextColor(if (focused) N.INK else if (on) N.TEXT else N.MUTED)
@@ -207,11 +225,16 @@ class ArtView(c: Context, style: Int = 0) : View(c) {
 class LogoBox(private val ctx: Context, size: Int, radius: Int, fill: Int = 0xFF1B1F27.toInt()) : FrameLayout(ctx) {
     private val img = ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER; setPadding(ctx.px(size / 8), ctx.px(size / 10), ctx.px(size / 8), ctx.px(size / 10)) }
     private val ini = ctx.txt("", size / 3, N.TEXT, 700).apply { gravity = Gravity.CENTER }
+    /** Small gold crown in the corner for premium channels. */
+    private val crown = ImageView(ctx).apply { setImageResource(R.drawable.ic_crown); setColorFilter(0xFFF5B83D.toInt()); visibility = View.GONE }
     init {
         background = rr(fill, ctx.px(radius))
         addView(ini, LayoutParams(-1, -1)); addView(img, LayoutParams(-1, -1))
+        val c = ctx.px((size / 3).coerceAtLeast(16))
+        addView(crown, LayoutParams(c, c, Gravity.TOP or Gravity.END).apply { setMargins(0, ctx.px(2), ctx.px(2), 0) })
     }
     fun bind(ch: Channel) {
+        crown.visibility = if (ch.premium) View.VISIBLE else View.GONE
         ini.text = ch.name.split(' ').filter { it.isNotEmpty() }.take(2).joinToString("") { it.first().uppercase() }
         ini.visibility = View.VISIBLE
         Images.load(img, ch.logo) { shown -> if (shown) ini.visibility = View.GONE }
@@ -403,8 +426,9 @@ class Header(private val a: Activity, private val current: Class<*>) {
             gravity = Gravity.CENTER_VERTICAL; noClip(); setPadding(a.px(6), a.px(6), a.px(6), a.px(6))
             background = rr(N.GLASS, a.px(40), N.HAIR + 0x04000000, a.px(1))
             addView(search, LinearLayout.LayoutParams(a.px(52), a.px(52)))
-            listOf("Home" to HomeActivity::class.java, "Live TV" to LiveTvActivity::class.java, "Free TV" to FreeTvActivity::class.java, "HD" to HdTvActivity::class.java, "Guide" to GuideActivity::class.java,
-                "Favourites" to FavoritesActivity::class.java).forEach { (l, c) ->
+            val jio = Store.loggedIn // free-only mode has no Jio channels or guide
+            listOf("Home" to HomeActivity::class.java, "Jio TV" to LiveTvActivity::class.java, "Free TV" to FreeTvActivity::class.java, "HD" to HdTvActivity::class.java, "Guide" to GuideActivity::class.java,
+                "Favourites" to FavoritesActivity::class.java).filter { jio || it.second != LiveTvActivity::class.java && it.second != GuideActivity::class.java }.forEach { (l, c) ->
                 addView(item(l, 0, c), LinearLayout.LayoutParams(-2, a.px(52)).apply { marginStart = a.px(4) })
             }
         }

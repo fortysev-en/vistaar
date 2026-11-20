@@ -1,0 +1,9 @@
+{
+  "name": "vistaar-webos-probe",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "package": "cd ../web && npm run build:probe && cd ../webos-probe && ares-package app services/com.vistaar.probe.webos.service --outdir out --no-minify"
+  },
+  "devDependencies": { "@webos-tools/cli": "^3.2.0" }
+}

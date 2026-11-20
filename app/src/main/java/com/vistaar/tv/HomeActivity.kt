@@ -46,7 +46,7 @@ class HomeActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.loggedIn) return goLogin()
+        if (!Store.hasAccess) return goLogin()
         header = Header(this, HomeActivity::class.java)
         backdrop = ArtView(this)
 
@@ -99,7 +99,7 @@ class HomeActivity : Activity() {
             addView(LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL; noClip()
                 addView(watchBtn, LinearLayout.LayoutParams(-2, px(68)))
-                addView(guideBtn, LinearLayout.LayoutParams(-2, px(68)).apply { marginStart = px(32) })
+                if (Store.loggedIn) addView(guideBtn, LinearLayout.LayoutParams(-2, px(68)).apply { marginStart = px(32) })
                 addView(favBtn, LinearLayout.LayoutParams(px(68), px(68)).apply { marginStart = px(20) })
             }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(32) })
         }
@@ -155,7 +155,9 @@ class HomeActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (!Store.loggedIn) return
+        if (!Store.hasAccess) return
+        if (!Store.langsDone) { startActivity(Intent(this, LanguageActivity::class.java).putExtra("first", true)); return } // first run: pick languages
+        Updater.autoCheck(this)
         Catalog.onChange = { refresh() }
         Catalog.start(false)
         refresh()
@@ -223,6 +225,9 @@ class HomeActivity : Activity() {
         heroName.text = ch.name; heroNum.text = Catalog.numberOf(ch.id).toString()
         heroTitle.text = ch.name; heroSub.text = langName(ch.lang) + if (ch.hd) " · HD" else ""
         heroUntil.text = "Live now"; heroDesc.text = ""; heroStart.text = ""; heroEnd.text = ""; heroBar.progress = 0f
+        val noGuide = ch.id < 0 && Catalog.twinOf(ch.id) == null // a free channel with no Jio twin has nothing to show
+        if (noGuide) heroDesc.text = "Free channel: it has no programme guide."
+        heroBar.visibility = if (noGuide) View.INVISIBLE else View.VISIBLE
         bindFav(ch)
         Epg.load(ch.id) { list ->
             if (heroCh?.id != ch.id) return@load

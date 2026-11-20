@@ -13,12 +13,21 @@ import java.util.concurrent.TimeUnit
 
 /** [url] is set only for free channels (negative id): their stream is the playlist URL itself, with an optional UA / referrer. */
 data class Channel(val id: Long, val name: String, val order: Int, val lang: Int, val hd: Boolean, val logo: String,
-                   val url: String = "", val ua: String = "", val ref: String = "")
+                   val url: String = "", val ua: String = "", val ref: String = "", val cat: Int = 0,
+                   /** Jio marks channels outside the base pack (`is_premium`); shown with a crown. */
+                   val premium: Boolean = false)
+
+/** Genre ids as used by JioTV's channel list (`channelCategoryId`); names from public knowledge, checked against sample channels. */
+val GENRES = mapOf(5 to "Entertainment", 6 to "Movies", 12 to "News", 13 to "Music", 7 to "Kids", 8 to "Sports", 15 to "Devotional",
+    17 to "Education", 10 to "Knowledge", 9 to "Lifestyle", 16 to "Business", 18 to "Shopping")
 
 /** Language ids as used by JioTV's channel list. Names are from public knowledge of the service, not the APK: unknown ids fall back to "Other". */
 val LANGUAGES = mapOf(1 to "Hindi", 2 to "Marathi", 3 to "Punjabi", 4 to "Urdu", 5 to "Bengali", 6 to "English", 7 to "Malayalam",
     8 to "Tamil", 9 to "Gujarati", 10 to "Odia", 11 to "Telugu", 12 to "Bhojpuri", 13 to "Kannada", 14 to "Assamese",
     15 to "Nepali", 16 to "French")
+/** ISO 639 codes for the language ids above, used to prefer the channel's own audio track. */
+val LANG_CODES = mapOf(1 to "hi", 2 to "mr", 3 to "pa", 4 to "ur", 5 to "bn", 6 to "en", 7 to "ml", 8 to "ta", 9 to "gu", 10 to "or", 11 to "te",
+    12 to "bho", 13 to "kn", 14 to "as", 15 to "ne", 16 to "fr")
 data class Program(val srno: Long, val title: String, val showtime: String, val start: Long, val end: Long, val desc: String = "")
 
 data class Play(val url: String, val dash: Boolean, val license: String)
@@ -50,6 +59,19 @@ object Api {
         return text
     }
 
+    /** Streams [url] to [out], reporting 0-100 when the size is known. Used by the updater. */
+    fun download(url: String, out: java.io.File, progress: (Int) -> Unit) {
+        http.newCall(Request.Builder().url(url).header("User-Agent", "Vistaar").build()).execute().use { r ->
+            if (!r.isSuccessful) throw ApiException("HTTP ${r.code}")
+            val body = r.body ?: throw ApiException("Empty download")
+            val len = body.contentLength(); var done = 0L; var last = -1
+            body.byteStream().use { i -> out.outputStream().use { o ->
+                val buf = ByteArray(65536); var n: Int
+                while (i.read(buf).also { n = it } >= 0) { o.write(buf, 0, n); done += n; if (len > 0) (done * 100 / len).toInt().let { if (it != last) { last = it; progress(it) } } }
+            } }
+        }
+    }
+
     private fun loginHeaders(b: Request.Builder) = b
         .header("Content-Type", "application/json")
         .header("os", "android").header("devicetype", "phone")
@@ -77,7 +99,12 @@ object Api {
         if (code !in 200..299) return "Verify failed ($code): ${text.take(160)}"
         val root = JSONObject(text)
         val d = root.optJSONObject("data") ?: root // response is either wrapped in {data} or flat
-        if (d.optString("tempToken").isNotEmpty()) return "Device limit reached: log out of another device in the JioTV app, then retry."
+        val temp = d.optString("tempToken")
+        if (temp.isNotEmpty()) { // device limit: keep what the app keeps, so "log out other devices" can finish this sign-in
+            val u = d.optJSONObject("sessionAttributes")?.optJSONObject("user")
+            pending = Pending(temp, d.optString("lbCookie"), u?.optString("unique").orEmpty(), u?.optString("subscriberId").orEmpty(), u?.optString("uid").orEmpty())
+            return DEVICE_LIMIT
+        }
         val user = d.optJSONObject("sessionAttributes")?.optJSONObject("user")
         if (d.optString("ssoToken").isEmpty() || user == null) return "Unexpected login response: ${text.take(160)}"
         Store.save(
@@ -86,6 +113,43 @@ object Api {
             uid = user.optString("uid")
         )
         return null
+    }
+
+    const val DEVICE_LIMIT = "device_limit"
+    private class Pending(val temp: String, val lb: String, val unique: String, val sub: String, val uid: String)
+    @Volatile private var pending: Pending? = null
+
+    /**
+     * Device limit reached: logs the account out of every device (the JioTV app's own "log out other devices" step) using the
+     * temporary token from the failed sign-in, which also returns fresh tokens. Returns null when signed in, otherwise a message.
+     */
+    fun expireAllUsers(): String? {
+        val p = pending ?: return "That sign-in expired. Go back and request a new code."
+        val body = JSONObject().put("appName", APP_NAME).put("deviceId", Store.deviceId).toString().toRequestBody(JSON)
+        val (code, text) = call(Request.Builder().url(TOKENS + "v2/expireallusers").post(body)
+            .header("Content-Type", "application/json").header("x-platform", "androidmobile").header("temptoken", p.temp).build())
+        android.util.Log.d("Vistaar", "expireallusers -> $code")
+        val root = try { JSONObject(text) } catch (e: Exception) { return "Unexpected reply from Jio ($code)." }
+        val d = root.optJSONObject("data") ?: root
+        val sso = d.optString("ssoToken"); val auth = d.optString("authToken"); val refresh = d.optString("refreshToken")
+        if (code !in 200..299 || sso.isEmpty() || auth.isEmpty()) return root.optString("message").ifEmpty { "Could not log out the other devices ($code)." }.take(120)
+        pending = null
+        if (p.unique.isEmpty() || p.sub.isEmpty()) return "Other devices were logged out. Send a new code to sign in." // slot is free now, so a normal sign-in works
+        Store.save(sso, auth, refresh, p.lb, p.unique, p.sub, p.uid)
+        return null
+    }
+
+    /** Tells Jio this TV is signed out so it stops counting against the device limit. Best effort: short timeout, errors ignored. */
+    fun logoutRemote() {
+        if (Store.refresh.isEmpty()) return
+        try {
+            val body = JSONObject().put("appName", APP_NAME).put("deviceId", Store.deviceId).put("refreshToken", Store.refresh).toString().toRequestBody(JSON)
+            val req = Request.Builder().url(TOKENS + "v1/logout").post(body)
+                .header("Content-Type", "application/json").header("accesstoken", Store.auth).header("ssotoken", Store.sso).header("devicetype", "phone")
+                .header("versionCode", "424").header("os", "android").header("uniqueId", Store.uniqueId).build()
+            val c = http.newBuilder().callTimeout(6, TimeUnit.SECONDS).build().newCall(req).execute().use { it.code }
+            android.util.Log.d("Vistaar", "logout -> $c")
+        } catch (e: Exception) { android.util.Log.d("Vistaar", "logout failed: $e") }
     }
 
     /** Headers the app sends on playback calls and on every HLS segment request. */
@@ -119,7 +183,8 @@ object Api {
             .filter { !it.optBoolean("isHidden") }
             .map { Channel(it.optLong("channel_id"), it.optString("channel_name"), it.optInt("channel_order", Int.MAX_VALUE),
                 it.optInt("channelLanguageId"), it.optBoolean("isHD"),
-                it.optString("logoUrl").let { l -> if (l.isEmpty()) "" else "https://jiotv.catchup.cdn.jio.com/dare_images/images/$l" }) }
+                it.optString("logoUrl").let { l -> if (l.isEmpty()) "" else "https://jiotv.catchup.cdn.jio.com/dare_images/images/$l" },
+                cat = it.optInt("channelCategoryId"), premium = it.optBoolean("is_premium")) }
             .filter { it.id != 0L }.sortedBy { it.order }
     }
 
@@ -223,6 +288,17 @@ object Store {
     fun setAuth(a: String) { sp.edit().putString("auth", a).apply() }
     val uniqueId get() = s("uniqueId"); val subscriberId get() = s("subscriberId"); val uid get() = s("uid")
     val loggedIn get() = sso.isNotEmpty()
+    /** "Continue with free channels": no Jio sign-in, only the free playlist. */
+    var freeOnly: Boolean get() = sp.getBoolean("freeOnly", false); set(v) { sp.edit().putBoolean("freeOnly", v).apply() }
+    val hasAccess get() = loggedIn || freeOnly
+    /** Chosen Jio language ids. [langsDone] with an empty set means "all languages". */
+    val langs: Set<Int> get() = s("langs").split(",").mapNotNull { it.toIntOrNull() }.toSet()
+    val langsDone get() = sp.getBoolean("langsDone", false)
+    fun setLangs(l: Set<Int>) { sp.edit().putString("langs", l.joinToString(",")).putBoolean("langsDone", true).apply() }
+    var playlistUrl: String get() = s("playlist").ifEmpty { Free.DEFAULT }; set(v) { sp.edit().putString("playlist", v).apply() }
+    fun audioPref(id: Long) = s("aud.$id")
+    fun setAudioPref(id: Long, v: String) { sp.edit().putString("aud.$id", v).apply() }
+    fun clearAudioPrefs() { val e = sp.edit(); sp.all.keys.filter { it.startsWith("aud.") }.forEach { e.remove(it) }; e.apply() }
     fun save(sso: String, auth: String, refresh: String, lb: String, uniqueId: String, subscriberId: String, uid: String) {
         sp.edit().putString("sso", sso).putString("auth", auth).putString("refresh", refresh).putString("lb", lb)
             .putString("uniqueId", uniqueId).putString("subscriberId", subscriberId).putString("uid", uid).apply()

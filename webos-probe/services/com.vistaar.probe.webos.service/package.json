@@ -1,0 +1,6 @@
+{
+  "name": "com.vistaar.probe.webos.service",
+  "version": "1.0.0",
+  "description": "Vistaar test helper: fetches a stream key without a browser Origin header",
+  "main": "service.js"
+}

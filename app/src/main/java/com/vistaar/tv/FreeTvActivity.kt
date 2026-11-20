@@ -45,12 +45,13 @@ open class FreeTvActivity : Activity() {
     private var cat: String? = null
     private var channels: List<Channel> = emptyList()
     private var previewCh: Channel? = null
+    private val pp by lazy { PreviewPlayer(this) }
     private val ui = Handler(Looper.getMainLooper())
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.loggedIn) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (!Store.hasAccess) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
         header = Header(this, this::class.java)
         backdrop = ArtView(this).apply { alpha = 0.28f }
 
@@ -70,6 +71,7 @@ open class FreeTvActivity : Activity() {
         val artBox = FrameLayout(this).apply {
             clipRound(px(24))
             addView(pArt, FrameLayout.LayoutParams(-1, -1))
+            addView(pp.view, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0x0007080A, 0xBF07080A.toInt())) }, FrameLayout.LayoutParams(-1, -1))
             addView(liveBadge(), FrameLayout.LayoutParams(-2, -2).apply { setMargins(px(20), px(20), 0, 0) })
             addView(pLogo, FrameLayout.LayoutParams(px(64), px(64), Gravity.BOTTOM).apply { setMargins(px(20), 0, 0, px(20)) })
@@ -103,12 +105,13 @@ open class FreeTvActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (!Store.loggedIn) return
+        if (!Store.hasAccess) return
         Catalog.onChange = { refresh() }
+        previewCh?.let { pp.show(it) }
         Catalog.start(false); refresh()
     }
 
-    override fun onPause() { super.onPause(); Catalog.onChange = null }
+    override fun onPause() { super.onPause(); Catalog.onChange = null; pp.release() }
 
     private fun play(ch: Channel) { startActivity(Intent(this, PlayerActivity::class.java).putExtra("id", ch.id).putExtra("hd", hdOnly)) }
 
@@ -135,11 +138,23 @@ open class FreeTvActivity : Activity() {
     private fun preview(ch: Channel) {
         if (previewCh?.id == ch.id) return
         previewCh = ch
+        pp.show(ch)
         backdrop.setStyle(ch.id.toInt()); pArt.setStyle(ch.id.toInt()); pLogo.bind(ch)
         val free = ch.url.isNotEmpty()
         pCat.text = langName(ch.lang) + if (ch.hd) " · HD" else ""
-        pSub.text = "${ch.name} · ${Catalog.numberOf(ch.id)}"; pTitle.text = ch.name; pMeta.text = (if (free) "Free TV" else "Live TV") + if (ch.hd) " · HD" else ""
+        pSub.text = "${ch.name} · ${Catalog.numberOf(ch.id)}"; pTitle.text = ch.name; pMeta.text = (if (free) "Free TV" else "Jio TV") + if (ch.hd) " · HD" else ""
         pNote.text = if (free) "A free stream from the community iptv-org playlist. Availability varies, and some channels may be offline." else "On your Jio plan."
+    }
+
+    /** Down on the last channel stays put; Left goes back to the open category, not whichever row is nearest. */
+    private fun chKey(code: Int, e: KeyEvent, pos: Int): Boolean {
+        if (code == KeyEvent.KEYCODE_DPAD_LEFT && e.action == KeyEvent.ACTION_DOWN) {
+            val pos = cats.indexOfFirst { it.name == cat }.coerceAtLeast(0)
+            (catList.layoutManager as LinearLayoutManager).scrollToPosition(pos)
+            catList.post { catList.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus() }
+            return true
+        }
+        return chList.stepFocus(pos, code, e, channels.size)
     }
 
     private fun select(c: String?) {
@@ -178,7 +193,7 @@ open class FreeTvActivity : Activity() {
             (row.getChildAt(1) as TextView).text = c.count.toString()
             row.paintCat(px(14), c.name == cat, row.isFocused)
             row.setOnClickListener { select(c.name) }
-            row.setOnKeyListener { _, code, _ -> code == KeyEvent.KEYCODE_DPAD_DOWN && h.bindingAdapterPosition == cats.size - 1 } // end of the list: stay
+            row.setOnKeyListener { _, code, e -> catList.stepFocus(h.bindingAdapterPosition, code, e, cats.size) }
         }
     }
 
@@ -219,7 +234,7 @@ open class FreeTvActivity : Activity() {
             (v[4] as View).visibility = if (Catalog.isFav(ch.id)) View.VISIBLE else View.GONE
             row.setOnClickListener { play(ch) }
             row.setOnLongClickListener { Catalog.toggleFav(ch.id); notifyItemChanged(p); true }
-            row.setOnKeyListener { _, code, _ -> code == KeyEvent.KEYCODE_DPAD_DOWN && h.bindingAdapterPosition == channels.size - 1 }
+            row.setOnKeyListener { _, code, e -> chKey(code, e, h.bindingAdapterPosition) }
         }
     }
 }

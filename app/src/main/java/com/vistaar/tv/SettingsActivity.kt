@@ -24,27 +24,65 @@ class SettingsActivity : Activity() {
     private lateinit var intro: android.widget.TextView
     private lateinit var rowsBox: LinearLayout
     private var current = 0
+    private var updateState = ""
+    private var signOutState = ""
+    private var signingOut = false
+
+    /** Logs this TV out on Jio's side first (so it stops counting against the device limit), then clears the local sign-in. */
+    private fun signOut() {
+        if (signingOut) return
+        signingOut = true; signOutState = "Signing out…"; render()
+        Thread {
+            Api.logoutRemote()
+            runOnUiThread {
+                Store.clear(); Store.freeOnly = false; Catalog.reset()
+                startActivity(Intent(this, LoginActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)); finish()
+            }
+        }.start()
+    }
+
+    private fun checkUpdate() {
+        updateState = "Checking…"; render()
+        Updater.check(this) { r, e ->
+            updateState = if (e != null) "Couldn’t check" else if (r == null) "You’re up to date" else "Version ${r.version} available"
+            render(); if (r != null) Updater.show(this, r)
+        }
+    }
+
+    private fun openLink(url: String) {
+        try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
+        catch (e: Exception) { updateState = "No browser on this TV: $url"; render() } // TVs often have none; show the address instead
+    }
 
     @Suppress("DEPRECATION")
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.loggedIn) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (!Store.hasAccess) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
         val checked = { Store.prefs.getLong("okAt", 0).let { if (it == 0L) "never" else SimpleDateFormat("d MMM, h:mm a", Locale.getDefault()).format(it) } }
         val info = packageManager.getPackageInfo(packageName, 0)
+        val jio = Store.loggedIn
+        val langSummary = { val l = Store.langs; if (l.isEmpty()) "All" else l.mapNotNull { LANGUAGES[it] }.sorted().let { n -> if (n.size <= 2) n.joinToString(", ") else "${n.size} languages" } }
+        val playlistName = { Store.playlistUrl.let { u -> if (u == Free.DEFAULT) "India (default)" else u.removePrefix("https://").removePrefix("http://").substringAfterLast('/').ifEmpty { u.take(28) } } }
         cats = listOf(
-            Cat("Library", R.drawable.ic_channels, "Keep the channel list and your saved channels tidy.") { listOf(
-                Row("Refresh channels", "Re-check which channels your plan includes", if (Catalog.scanning) "Checking ${Catalog.scanned}/${Catalog.all.size}" else "Checked ${checked()}", 1) { Catalog.start(true); render() },
+            Cat("Library", R.drawable.ic_channels, "Keep the channel list and your saved channels tidy.") { listOfNotNull(
+                Row("Refresh channels", if (jio) "Re-check which channels your plan includes" else "Reload the free channel list", if (Catalog.scanning) "Checking ${Catalog.scanned}/${Catalog.all.size}" else if (jio) "Checked ${checked()}" else "", 1) { Catalog.start(true); render() },
+                Row("Languages", "Only channels in these languages are listed", langSummary(), 1) { startActivity(Intent(this, LanguageActivity::class.java)) },
+                Row("Free TV playlist", "Choose a country or paste any M3U link", playlistName(), 1) { startActivity(Intent(this, PlaylistActivity::class.java)) },
                 Row("Clear favourites", "Remove every saved channel", "${Catalog.favCount()} saved", 1) { Catalog.clearFavs(); render() },
-                Row("Clear recently watched", "Resets the Home hero and Recently watched row", "", 1) { Catalog.clearRecents(); render() }) },
-            Cat("Account", R.drawable.ic_logout, "Manage the account this TV is signed in to.") { listOf(
-                Row("Sign out", "Use a different number on this TV", "", 1, destructive = true) { Store.clear(); Catalog.reset(); startActivity(Intent(this, LoginActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)); finish() },
+                Row("Clear recently watched", "Resets Home and the remembered audio language of each channel", "", 1) { Catalog.clearRecents(); Store.clearAudioPrefs(); render() }) },
+            Cat("Account", R.drawable.ic_logout, if (jio) "Manage the account this TV is signed in to." else "You are using the free channels only.") { listOfNotNull(
+                if (jio) Row("Sign out", "Frees this TV on your Jio account and lets you use a different number", signOutState, 1, destructive = true) { signOut() }
+                else Row("Sign in to Jio", "Add your Jio channels, guide and HD", "", 1) { startActivity(Intent(this, LoginActivity::class.java).putExtra("add", true)) },
                 Row("Exit app", "Close the app", "", 1) { confirmExit() }) },
-            Cat("About", R.drawable.ic_info, "Share these details if something isn’t working.") { listOf(
+            Cat("About", R.drawable.ic_info, "Share these details if something isn’t working.") { listOfNotNull(
                 Row("App version", "", "${info.versionName} (${info.versionCode})", 2),
+                Row("Check for updates", "Looks for a newer Vistaar on GitHub", updateState, 1) { checkUpdate() },
+                Row("GitHub", "Source code and releases", "fortysev-en/vistaar", 1) { openLink("https://github.com/fortysev-en/vistaar") },
+                Row("Documentation", "Guides and how it works", "fortyseven.dev/projects/vistaar", 1) { openLink("https://fortyseven.dev/projects/vistaar") },
                 Row("Device", "", "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE}", 2),
-                Row("Channels on your plan", "", "${Catalog.playableChannels().size} of ${Catalog.all.size}", 2),
-                Row("Plan last checked", "", checked(), 2)) }
+                if (jio) Row("Channels on your plan", "", "${Catalog.playableChannels().size} of ${Catalog.all.size}", 2) else null,
+                if (jio) Row("Plan last checked", "", checked(), 2) else null) }
         )
         val back = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL; focusSkin(px(26), N.SURFACE, 1.04f); setPadding(px(16), 0, px(22), 0)
@@ -72,7 +110,7 @@ class SettingsActivity : Activity() {
         render()
     }
 
-    override fun onResume() { super.onResume(); if (Store.loggedIn) { Catalog.onChange = { render() }; Catalog.start(false) } }
+    override fun onResume() { super.onResume(); if (Store.hasAccess) { Catalog.onChange = { render() }; Catalog.start(false); render() } }
     override fun onPause() { super.onPause(); Catalog.onChange = null }
 
     private fun render(focusNav: Boolean = false) {
