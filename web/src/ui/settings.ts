@@ -10,11 +10,12 @@ import { Platform } from '../platform'
 import { DEFAULT_PLAYLIST, Store } from '../store'
 import { LANGUAGES } from '../types'
 import { VERSION } from '../version'
-import { App, dialog, exitDialog, type Screen } from './app'
+import { App, navTabs, startTab, dialog, exitDialog, type Screen } from './app'
 import { fmtTime } from './widgets'
 
 /** Settings: Library, Account, About. Every row does something real. Port of SettingsActivity. */
-interface Row { label: string; desc?: string; value?: string; kind?: 'action' | 'info'; destructive?: boolean; act?: () => void }
+/** [selected] is set only for the rows of a one-of-many choice: it shows a tick on the chosen row instead of an arrow. */
+interface Row { label: string; desc?: string; value?: string; kind?: 'action' | 'info'; destructive?: boolean; selected?: boolean; act?: () => void }
 interface Cat { label: string; icon: string; intro: string; rows: () => Row[] }
 
 function genreSummary(): string {
@@ -59,6 +60,7 @@ export function settingsScreen(p?: { cat?: number }): Screen {
       { label: 'Reset order', desc: 'Put the tabs and categories back in their usual order', act: () => { Order.resetAll(); render() } },
       { label: 'Clear recently watched', desc: 'Resets Home and the remembered audio language of each channel', act: () => { Catalog.clearRecents(); Store.clearAudioPrefs(); render() } },
     ] },
+    { label: 'Startup', icon: 'play', intro: 'Choose the screen Vistaar opens on.', rows: () => navTabs().map(([label, name]): Row => ({ label, selected: name === startTab(), act: () => { Store.startTab = name; render() } })) },
     { label: 'Account', icon: 'logout', intro: jio ? 'Manage the account this TV is signed in to.' : 'You are using the free channels only.', rows: () => [
       jio ? { label: 'Sign out', desc: 'Frees this TV on your Jio account and lets you use a different number', value: signOutState, destructive: true, act: () => signOut() }
         : { label: 'Sign in to Jio', desc: 'Add your Jio channels, guide and HD', act: () => App.go('login', { add: true }) },
@@ -97,7 +99,8 @@ export function settingsScreen(p?: { cat?: number }): Screen {
       rowsBox.appendChild(h('div', { class: 'srow' + (r.destructive ? ' bad' : ''), f: !info, onclick: () => r.act && r.act() },
         h('div', { class: 'l' }, h('div', { class: 'lb p' }, r.label), r.desc ? h('div', { class: 'ds s' }, r.desc) : null),
         r.value ? h('div', { class: 'v s' + (info ? ' mono' : '') }, r.value) : null,
-        info ? null : h('span', { class: 'chev m' }, icon('right', 18))))
+        r.selected !== undefined ? h('span', { class: 'tick a' + (r.selected ? '' : ' off') }, icon('check', 26))
+          : info ? null : h('span', { class: 'chev m' }, icon('right', 18))))
     })
     if (rowFocus >= 0 && rowsBox.children[rowFocus]) setFocus(rowsBox.children[rowFocus] as HTMLElement)
     if (focusNav) setFocus(nav.children[current + 1] as HTMLElement)

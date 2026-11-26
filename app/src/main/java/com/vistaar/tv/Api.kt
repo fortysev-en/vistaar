@@ -297,6 +297,10 @@ object Store {
     /** Chosen Jio language ids. [langsDone] with an empty set means "all languages". */
     val langs: Set<Int> get() = s("langs").split(",").mapNotNull { it.toIntOrNull() }.toSet()
     val langsDone get() = sp.getBoolean("langsDone", false)
+    /** Name of the header tab the app opens on (Settings, Startup). */
+    var startTab: String
+        get() = s("startTab").ifEmpty { "Home" }
+        set(v) { sp.edit().putString("startTab", v).apply() }
     /** Favourite categories (Jio genre ids), most wanted first: Home lists its rows in this order. */
     val genres: List<Int> get() = s("genres").split(",").mapNotNull { it.toIntOrNull() }.filter { it in GENRES }
     fun setGenres(l: Collection<Int>) { sp.edit().putString("genres", l.joinToString(",")).apply() }

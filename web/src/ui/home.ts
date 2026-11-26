@@ -33,7 +33,7 @@ export function homeScreen(): Screen {
     heroCh = ch
     backdrop.style.background = artBg(ch.id)
     clear(hero)
-    const title = h('div', { class: 'big' }, ch.name), sub = h('div', { class: 'hs' }, langName(ch.lang) + (ch.hd ? ' · HD' : ''))
+    const title = h('div', { class: 'big' }, Catalog.label(ch)), sub = h('div', { class: 'hs' }, langName(ch.lang) + (ch.hd ? ' · HD' : ''))
     const until = h('div', { class: 'until' }, liveBadge(), h('span', null, 'Live now')), desc = h('div', { class: 'hd' }), time = h('div', { class: 'ht hide' })
     const favIc = h('span')
     const paintFav = () => { clear(favIc); favIc.appendChild(icon(Catalog.isFav(ch.id) ? 'star' : 'starO', 28, Catalog.isFav(ch.id) ? 'var(--accent)' : undefined)) }
@@ -41,7 +41,7 @@ export function homeScreen(): Screen {
     const watch = h('div', { class: 'btn', f: true, 'data-watch': true, onclick: () => play(ch) }, icon('play', 24), 'Watch Live')
     const guide = h('div', { class: 'btn', f: true, onclick: () => App.go('guide') }, icon('guide', 24), 'Guide')
     const fav = h('div', { class: 'btn round', f: true, onclick: () => { Catalog.toggleFav(ch.id); paintFav(); sig = ''; render() } }, favIc)
-    hero.appendChild(h('div', { class: 'who' }, logoBox(ch, 56), h('span', null, ch.name), h('span', { class: 'nmb' }, Catalog.numberOf(ch))))
+    hero.appendChild(h('div', { class: 'who' }, logoBox(ch, 56), h('span', null, Catalog.label(ch)), h('span', { class: 'nmb' }, Catalog.numberOf(ch))))
     hero.appendChild(title); hero.appendChild(sub); hero.appendChild(until); hero.appendChild(desc); hero.appendChild(time)
     hero.appendChild(h('div', { class: 'hb' }, watch, jio ? guide : null, fav))
     if (ch.url && !Catalog.twinOf(ch.id)) desc.textContent = 'Free channel: it has no programme guide.'

@@ -288,8 +288,8 @@ class PlayerActivity : Activity() {
     /** Fills and shows the hud, then hides it after 7s. [focus] moves the remote onto the controls. */
     private fun showInfo(focus: Boolean = false) {
         val ch = channels[index]; val p = program
-        logo.bind(ch); chName.text = ch.name; chNum.text = Catalog.numberOf(ch.id).toString()
-        title.text = p?.title ?: ch.name
+        logo.bind(ch); chName.text = Catalog.label(ch); chNum.text = Catalog.numberOf(ch.id).toString()
+        title.text = p?.title ?: Catalog.label(ch)
         meta.text = listOfNotNull(langName(ch.lang), if (ch.hd) "HD" else null, p?.let { "Until ${fmt(it.end)}" }, upcoming?.let { "Next: ${it.title}" }).joinToString("  ·  ")
         tStart.text = p?.let { fmt(it.start) } ?: ""; tEnd.text = p?.let { fmt(it.end) } ?: ""
         bar.visibility = if (p != null) View.VISIBLE else View.INVISIBLE; refreshProgress(); updateLabels(); reveal(false)
@@ -298,7 +298,7 @@ class PlayerActivity : Activity() {
 
     private fun showLoading() {
         val ch = channels[index]
-        logo.bind(ch); chName.text = ch.name; chNum.text = Catalog.numberOf(ch.id).toString(); title.text = ch.name; meta.text = "Loading…"
+        logo.bind(ch); chName.text = Catalog.label(ch); chNum.text = Catalog.numberOf(ch.id).toString(); title.text = Catalog.label(ch); meta.text = "Loading…"
         tStart.text = ""; tEnd.text = ""; bar.progress = 0f; updateLabels(); reveal(true)
     }
 

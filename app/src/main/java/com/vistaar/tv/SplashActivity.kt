@@ -94,8 +94,8 @@ class SplashActivity : Activity() {
         else {
             if (!Store.hasAccess) Store.freeOnly = true // Jio sign-in lives in Settings; nothing to sign in to here
             val home = Intent(this, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            // The app opens on whichever tab the viewer put first. Home stays underneath, so Back from that tab goes to Home.
-            val first = navTabs().first().second
+            // The app opens on the tab chosen in Settings, Startup. Home stays underneath, so Back from that tab goes to Home.
+            val first = startTab().second
             if (first == HomeActivity::class.java || !Store.langsDone) startActivity(home) else startActivities(arrayOf(home, Intent(this, first)))
         }
         finish()

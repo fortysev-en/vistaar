@@ -1,3 +1,5 @@
+import { favouritesScreen } from './ui/favourites'
+import { renameScreen } from './ui/rename'
 import { App } from './ui/app'
 import { Platform } from './platform'
 import { browserScreen } from './ui/browser'
@@ -18,7 +20,8 @@ App.register('jiotv', () => browserScreen('jio'))
 App.register('freetv', () => browserScreen('free'))
 App.register('hd', () => browserScreen('hd'))
 App.register('guide', guideScreen)
-App.register('favs', () => browserScreen('favs'))
+App.register('favs', favouritesScreen)
+App.register('rename', renameScreen)
 App.register('search', () => searchScreen())
 App.register('settings', settingsScreen)
 App.register('playlist', () => playlistScreen())

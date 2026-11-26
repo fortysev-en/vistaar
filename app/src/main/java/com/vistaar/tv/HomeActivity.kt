@@ -222,8 +222,8 @@ class HomeActivity : Activity() {
 
     private fun bindHero(ch: Channel) {
         backdrop.setStyle(ch.id.toInt()); heroLogo.bind(ch)
-        heroName.text = ch.name; heroNum.text = Catalog.numberOf(ch.id).toString()
-        heroTitle.text = ch.name; heroSub.text = langName(ch.lang) + if (ch.hd) " · HD" else ""
+        heroName.text = Catalog.label(ch); heroNum.text = Catalog.numberOf(ch.id).toString()
+        heroTitle.text = Catalog.label(ch); heroSub.text = langName(ch.lang) + if (ch.hd) " · HD" else ""
         heroUntil.text = "Live now"; heroDesc.text = ""; heroStart.text = ""; heroEnd.text = ""; heroBar.progress = 0f
         val noGuide = ch.id < 0 && Catalog.twinOf(ch.id) == null // a free channel with no Jio twin has nothing to show
         if (noGuide) heroDesc.text = "Free channel: it has no programme guide."

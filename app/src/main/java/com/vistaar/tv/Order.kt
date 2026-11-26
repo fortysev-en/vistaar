@@ -23,19 +23,20 @@ object Order {
 }
 
 /**
- * Hold-OK reorder. [begin] starts it for the item at a position; while it is on the arrow keys move the item ([prev]/[next] keys), and any other key (OK, Back, the
- * opposite axis) drops it. [pinned] leading items ("All channels", the search button) cannot be moved or passed.
+ * Hold-OK reorder. [begin] starts it for the item at a position; while it is on the arrow keys move the item ([prev]/[next] keys, plus Up/Down by a whole row
+ * in a grid of [columns]), and any other key (OK, Back, the unused axis) drops it. [pinned] leading items ("All channels", the search button) cannot be moved or passed.
  */
 internal class Mover(private val prev: Int, private val next: Int, private val pinned: Int, private val size: () -> Int,
                      private val move: (Int, Int) -> Unit, private val changed: (Int) -> Unit,
-                     private val radius: Int, private val view: (Int) -> android.view.View?) {
+                     private val radius: Int, private val view: (Int) -> android.view.View?, private val columns: Int = 0) {
     var on = false; private set
     var cur = -1; private set
     private var armed = false // the OK press that started it is still down: its repeats and release must not drop the item
 
-    fun begin(ctx: android.content.Context, pos: Int): Boolean {
+    /** [held] is true when the OK press that asked for the move is still down (a long press); false when it came from a menu. */
+    fun begin(ctx: android.content.Context, pos: Int, held: Boolean = true): Boolean {
         if (pos < pinned) return false
-        on = true; armed = true; cur = pos
+        on = true; armed = held; cur = pos
         Toast.makeText(ctx, "Move it, then press OK", Toast.LENGTH_SHORT).show()
         changed(pos); lift(); return true
     }
@@ -49,8 +50,15 @@ internal class Mover(private val prev: Int, private val next: Int, private val p
         val center = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
         if (center && armed) { if (e.action == KeyEvent.ACTION_UP) armed = false; return true }
         if (e.action != KeyEvent.ACTION_DOWN) return true
-        val to = when (code) { prev -> pos - 1; next -> pos + 1; else -> -1 }
-        if (to == -1) { on = false; view(pos)?.lifted(radius, false); changed(pos); return true }
+        var to = when {
+            code == prev -> pos - 1
+            code == next -> pos + 1
+            columns > 0 && code == KeyEvent.KEYCODE_DPAD_UP -> pos - columns
+            columns > 0 && code == KeyEvent.KEYCODE_DPAD_DOWN -> pos + columns
+            else -> { on = false; view(pos)?.lifted(radius, false); changed(pos); return true }
+        }
+        // Down into a shorter last row lands on its last card.
+        if (columns > 0 && to >= size() && pos / columns < (size() - 1) / columns) to = size() - 1
         if (to in pinned until size()) { cur = to; move(pos, to); lift() }
         return true
     }

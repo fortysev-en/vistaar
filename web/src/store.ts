@@ -37,6 +37,10 @@ export const Store = {
   get langsDone() { return get('langsDone') === '1' },
   setLangs(l: number[]) { set('langs', l.join(',')); set('langsDone', '1') },
 
+  /** Header tab the app opens on (Settings, Startup). */
+  get startTab(): string { return get('startTab') || 'home' },
+  set startTab(v: string) { set('startTab', v) },
+
   /** Favourite categories (Jio genre ids), most wanted first: Home lists its rows in this order. */
   get genres(): number[] { return get('genres').split(',').map(Number).filter((n) => n > 0) },
   setGenres(g: number[]) { set('genres', g.join(',')) },

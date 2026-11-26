@@ -15,7 +15,8 @@ import java.util.Locale
 
 /** Settings: Library, Account, About. Every row does something real; nothing here is a placeholder. */
 class SettingsActivity : Activity() {
-    private class Row(val label: String, val desc: String = "", val value: String = "", val kind: Int = 0, val destructive: Boolean = false, val act: (() -> Unit)? = null)
+    /** [selected] is set only for the rows of a one-of-many choice: it shows a tick on the chosen row instead of an arrow. */
+    private class Row(val label: String, val desc: String = "", val value: String = "", val kind: Int = 0, val destructive: Boolean = false, val selected: Boolean? = null, val act: (() -> Unit)? = null)
     private class Cat(val label: String, val icon: Int, val intro: String, val rows: () -> List<Row>)
 
     private lateinit var cats: List<Cat>
@@ -74,6 +75,9 @@ class SettingsActivity : Activity() {
                 Row("Clear favourites", "Remove every saved channel", "${Catalog.favCount()} saved", 1) { Catalog.clearFavs(); render() },
                 Row("Reset order", "Put the tabs and categories back in their usual order", "", 1) { Order.resetAll(); render() },
                 Row("Clear recently watched", "Resets Home and the remembered audio language of each channel", "", 1) { Catalog.clearRecents(); Store.clearAudioPrefs(); render() }) },
+            Cat("Startup", R.drawable.ic_play, "Choose the screen Vistaar opens on.") {
+                navTabs().map { (name, _) -> Row(name, kind = 1, selected = name == startTab().first) { Store.startTab = name; render() } }
+            },
             Cat("Account", R.drawable.ic_logout, if (jio) "Manage the account this TV is signed in to." else "You are using the free channels only.") { listOfNotNull(
                 if (jio) Row("Sign out", "Frees this TV on your Jio account and lets you use a different number", signOutState, 1, destructive = true) { signOut() }
                 else Row("Sign in to Jio", "Add your Jio channels, guide and HD", "", 1) { startActivity(Intent(this, LoginActivity::class.java).putExtra("add", true)) },
@@ -134,6 +138,7 @@ class SettingsActivity : Activity() {
     private fun render(focusNav: Boolean = false) {
         if (!::cats.isInitialized) return
         val hadFocus = rowsBox.hasFocus()
+        val focusedRow = rowsBox.indexOfChild(rowsBox.focusedChild).coerceAtLeast(0)
         navBox.removeAllViews()
         cats.forEachIndexed { i, c ->
             val on = i == current
@@ -159,7 +164,9 @@ class SettingsActivity : Activity() {
                     if (r.desc.isNotEmpty()) addView(txt(r.desc, 18, N.MUTED, tag = "s"), LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(4) })
                 }, LinearLayout.LayoutParams(0, -2, 1f))
                 if (r.value.isNotEmpty()) addView(txt(r.value, if (r.kind == 2) 20 else 22, N.MUTED, mono = r.kind == 2, tag = "s"), LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(24) })
-                if (r.kind == 1) addView(icon(R.drawable.ic_right, 18, N.MUTED, "m"), LinearLayout.LayoutParams(px(18), px(18)).apply { marginStart = px(14) })
+                if (r.selected != null) addView(icon(R.drawable.ic_check, 26, N.ACCENT, "a").apply { visibility = if (r.selected) View.VISIBLE else View.INVISIBLE },
+                    LinearLayout.LayoutParams(px(26), px(26)).apply { marginStart = px(14) })
+                else if (r.kind == 1) addView(icon(R.drawable.ic_right, 18, N.MUTED, "m"), LinearLayout.LayoutParams(px(18), px(18)).apply { marginStart = px(14) })
                 r.act?.let { a -> setOnClickListener { a() } }
             }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = px(8) })
         }
@@ -170,7 +177,7 @@ class SettingsActivity : Activity() {
                 addView(txt("https://fortyseven.dev", 22, N.TEXT2), LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(14); marginStart = px(2) })
             }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(36); marginStart = px(8) })
         }
-        if (hadFocus) rowsBox.getChildAt(0)?.requestFocus()
+        if (hadFocus) rowsBox.getChildAt(focusedRow)?.requestFocus() // stay on the row that was just used
         if (focusNav) { scroll.scrollTo(0, 0); navBox.getChildAt(current)?.requestFocus() } // new category: start at the top
     }
 }

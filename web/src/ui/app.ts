@@ -10,7 +10,7 @@ import { Store } from '../store'
 export const DISCLAIMER_VERSION = 1
 export const DISCLAIMER_TEXT = 'Vistaar is a media player only. It does not host, store or provide any content. Vistaar is not affiliated with any broadcaster, channel or content provider, including Jio, and does not endorse the use of illegal content sources. Free channels come from public playlists, and Jio channels appear only if you sign in with your own subscription. You are responsible for what you watch.'
 
-export type Name = 'login' | 'language' | 'home' | 'jiotv' | 'freetv' | 'hd' | 'guide' | 'favs' | 'search' | 'settings' | 'playlist' | 'player' | 'disclaimer'
+export type Name = 'rename' | 'login' | 'language' | 'home' | 'jiotv' | 'freetv' | 'hd' | 'guide' | 'favs' | 'search' | 'settings' | 'playlist' | 'player' | 'disclaimer'
 
 export interface Screen {
   el: HTMLElement
@@ -42,12 +42,12 @@ export const App = {
   },
 
   /** The first screen to show for the current sign-in state. */
-  /** [launch]: the app is starting, so it opens on whichever tab the viewer put first (Back then goes to Home). */
+  /** [launch]: the app is starting, so it opens on the tab chosen in Settings, Startup (Back then goes to Home). */
   home(launch = false) {
     if (Store.disclaimerV < DISCLAIMER_VERSION) { this.go('disclaimer'); return }
     if (!Store.hasAccess) Store.freeOnly = true // Jio sign-in lives in Settings; there is no sign-in screen at start
     if (!Store.langsDone) this.go('language', { first: true })
-    else this.go(launch ? navTabs()[0][1] : 'home')
+    else this.go(launch ? startTab() : 'home')
   },
 
   start() {
@@ -69,11 +69,14 @@ export const App = {
 export interface Header { el: HTMLElement; update(): void; firstFocus: HTMLElement }
 
 /** The header tabs this viewer has, in their saved order. Free-only mode has no Jio channels or guide. */
-function navTabs(): Array<[string, Name]> {
+export function navTabs(): Array<[string, Name]> {
   const jio = Store.loggedIn
   const items: Array<[string, Name]> = [['Home', 'home'], ['Jio TV', 'jiotv'], ['Free TV', 'freetv'], ['HD', 'hd'], ['Guide', 'guide'], ['Favourites', 'favs']]
   return Order.arrange(items.filter((i) => jio || (i[1] !== 'jiotv' && i[1] !== 'guide')), 'tabs', (i) => i[1])
 }
+
+/** The tab to open on: the one chosen in Settings, or Home while that one isn't available (Jio TV and Guide when signed out). */
+export function startTab(): Name { const t = navTabs().filter((i) => i[1] === Store.startTab)[0]; return t ? t[1] : 'home' }
 
 export function makeHeader(active: Name): Header {
   const pill = (label: string | null, ic: string | null, to: Name) => {
@@ -119,6 +122,16 @@ export function dialog(title: string, message: string, cancelLabel: string, okLa
   dialogEl = h('div', { class: 'dlg-bg' }, h('div', { class: 'dlg' }, h('h3', null, title), h('p', null, message), h('div', { class: 'bs' }, cancel, ok)))
   document.getElementById('app')!.appendChild(dialogEl)
   setRoot(dialogEl); setFocus(cancel)
+}
+
+/** A short list of choices over the screen (the hold-OK menu of a favourite). Back closes it. */
+export function menu(head: HTMLElement, options: Array<{ label: string; bad?: boolean; act: () => void }>) {
+  closeDialog()
+  dialogReturn = focused()
+  const rows = options.map((o) => h('div', { class: 'btn mrow' + (o.bad ? ' bad' : ''), f: true, onclick: () => { closeDialog(); o.act() } }, o.label))
+  dialogEl = h('div', { class: 'dlg-bg' }, h('div', { class: 'dlg menu' }, head, rows))
+  document.getElementById('app')!.appendChild(dialogEl)
+  setRoot(dialogEl); setFocus(rows[0])
 }
 
 export function exitDialog() { dialog('Exit the app?', "You'll need to reopen it to keep watching.", 'Cancel', 'Exit', () => Platform.exit()) }

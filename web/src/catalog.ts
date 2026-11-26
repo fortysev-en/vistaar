@@ -1,6 +1,7 @@
 import * as Api from './api'
 import { Free } from './free'
 import { Store } from './store'
+import { arrange } from './arrange'
 import { LANGUAGES, type Channel, type Program } from './types'
 
 /** Port of Catalog.kt + Epg: the channel list, "which channels does this plan include", favourites, recents, guide cache. Main-thread API. */
@@ -72,9 +73,23 @@ export const Catalog = {
 
   isFav(id: string) { return favs.has(id) },
   favCount() { return favs.size },
-  favourites(): Channel[] { return this.playableChannels().filter((c) => favs.has(c.id)).concat(Free.shown.filter((c) => favs.has(c.id))) },
-  toggleFav(id: string): boolean { if (!favs.delete(id)) favs.add(id); Store.put('favs', Array.from(favs).join(',')); return favs.has(id) },
-  clearFavs() { favs.clear(); Store.remove('favs') },
+  /** Saved channels in the viewer's own order (ones never moved keep Jio first, then free, after the arranged ones). */
+  favourites(): Channel[] { return arrange(this.playableChannels().filter((c) => favs.has(c.id)).concat(Free.shown.filter((c) => favs.has(c.id))), this.favOrder(), (c) => c.id) },
+  favOrder(): string[] { return Store.str('favOrder').split(',').filter(Boolean) },
+  /** [ids] is the order on screen; saved ids that are hidden right now (another language, signed out) are kept behind them. */
+  saveFavOrder(ids: string[]) { Store.put('favOrder', ids.concat(this.favOrder().filter((x) => ids.indexOf(x) < 0)).join(',')) },
+  /** Names the viewer gave to favourites; shown everywhere in place of the channel's own name. */
+  names(): { [id: string]: string } { return Store.json<{ [id: string]: string }>('favNames', {}) },
+  label(c: Channel): string { return (favs.has(c.id) && this.names()[c.id]) || c.name },
+  /** A blank [name], or the channel's own, goes back to the original. */
+  rename(c: Channel, name: string) { const n = this.names(), t = name.trim(); if (!t || t === c.name) delete n[c.id]; else n[c.id] = t; Store.putJson('favNames', n) },
+  toggleFav(id: string): boolean {
+    if (!favs.delete(id)) favs.add(id)
+    else { const n = this.names(); delete n[id]; Store.putJson('favNames', n); Store.put('favOrder', this.favOrder().filter((x) => x !== id).join(',')) } // a removed favourite forgets its name and place
+    Store.put('favs', Array.from(favs).join(','))
+    return favs.has(id)
+  },
+  clearFavs() { favs.clear(); Store.remove('favs'); Store.remove('favNames'); Store.remove('favOrder') },
 
   recentIds(): string[] { return Store.str('recent').split(',').filter(Boolean) },
   pushRecent(id: string) { Store.put('recent', [id].concat(this.recentIds().filter((x) => x !== id)).slice(0, 12).join(',')) },

@@ -91,14 +91,14 @@ export function playerScreen(p: Params): Screen {
   }
   function showLoading() {
     const ch = channels[index]
-    clear(logoSlot); logoSlot.appendChild(logoBox(ch, 64)); chName.textContent = ch.name; chNum.textContent = String(Catalog.numberOf(ch))
-    ptitle.textContent = ch.name; setMeta('Loading…'); tStart.textContent = tEnd.textContent = ''; (bar.firstChild as HTMLElement).style.width = '0%'
+    clear(logoSlot); logoSlot.appendChild(logoBox(ch, 64)); chName.textContent = Catalog.label(ch); chNum.textContent = String(Catalog.numberOf(ch))
+    ptitle.textContent = Catalog.label(ch); setMeta('Loading…'); tStart.textContent = tEnd.textContent = ''; (bar.firstChild as HTMLElement).style.width = '0%'
     labels(); reveal(true); loading.textContent = 'Loading…'
   }
   function showInfo(focusControls = false) {
     const ch = channels[index]
-    clear(logoSlot); logoSlot.appendChild(logoBox(ch, 64)); chName.textContent = ch.name; chNum.textContent = String(Catalog.numberOf(ch))
-    ptitle.textContent = program ? program.title : ch.name
+    clear(logoSlot); logoSlot.appendChild(logoBox(ch, 64)); chName.textContent = Catalog.label(ch); chNum.textContent = String(Catalog.numberOf(ch))
+    ptitle.textContent = program ? program.title : Catalog.label(ch)
     setMeta([langName(ch.lang), ch.hd ? 'HD' : '', program ? 'Until ' + fmtTime(program.end) : '', upcoming ? 'Next: ' + upcoming.title : ''].filter(Boolean).join('  ·  '))
     tStart.textContent = program ? fmtTime(program.start) : ''; tEnd.textContent = program ? fmtTime(program.end) : ''
     timeRow.style.visibility = program ? '' : 'hidden'; progress(); labels(); reveal(false)

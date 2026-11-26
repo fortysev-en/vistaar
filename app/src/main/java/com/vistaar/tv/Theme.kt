@@ -236,7 +236,7 @@ class LogoBox(private val ctx: Context, size: Int, radius: Int, fill: Int = 0xFF
     init {
         background = rr(fill, ctx.px(radius))
         addView(ini, LayoutParams(-1, -1)); addView(img, LayoutParams(-1, -1))
-        val c = ctx.px((size / 3).coerceAtLeast(16))
+        val c = ctx.px((size / 3).coerceIn(16, 32))
         addView(crown, LayoutParams(c, c, Gravity.TOP or Gravity.END).apply { setMargins(0, ctx.px(2), ctx.px(2), 0) })
     }
     fun bind(ch: Channel) {
@@ -287,7 +287,7 @@ class LiveCard(private val ctx: Context, private val w: Int, private val h: Int)
     fun bind(ch: Channel, editing: Boolean = false) {
         bound = ch.id
         art.setStyle(ch.id.toInt()); logo.bind(ch)
-        title.text = ch.name; sub.text = langName(ch.lang); bar.progress = 0f
+        title.text = Catalog.label(ch); sub.text = langName(ch.lang); bar.progress = 0f
         // In edit mode the star becomes a white "remove" button, as in the design's Favourites screen.
         star.setImageResource(if (editing) R.drawable.ic_close else R.drawable.ic_star)
         star.setColorFilter(if (editing) N.INK else N.ACCENT)
@@ -297,7 +297,7 @@ class LiveCard(private val ctx: Context, private val w: Int, private val h: Int)
         Epg.load(ch.id) { list ->
             if (bound != ch.id) return@load
             Epg.now(list)?.let { p ->
-                title.text = p.title; sub.text = "${ch.name} · until ${fmt(p.end)}"
+                title.text = p.title; sub.text = "${Catalog.label(ch)} · until ${fmt(p.end)}"
                 bar.progress = (System.currentTimeMillis() - p.start).toFloat() / (p.end - p.start).coerceAtLeast(1)
             }
         }
@@ -326,9 +326,9 @@ class LogoTile(private val ctx: Context, private val w: Int = 260, private val h
     }
 
     fun bind(ch: Channel) {
-        bound = ch.id; logo.bind(ch); title.text = ch.name; sub.text = langName(ch.lang) + if (ch.hd) " · HD" else ""
+        bound = ch.id; logo.bind(ch); title.text = Catalog.label(ch); sub.text = langName(ch.lang) + if (ch.hd) " · HD" else ""
         star.visibility = if (Catalog.isFav(ch.id)) View.VISIBLE else View.GONE
-        Epg.load(ch.id) { list -> if (bound == ch.id) Epg.now(list)?.let { p -> title.text = p.title; sub.text = ch.name } }
+        Epg.load(ch.id) { list -> if (bound == ch.id) Epg.now(list)?.let { p -> title.text = p.title; sub.text = Catalog.label(ch) } }
     }
 }
 
@@ -410,6 +410,9 @@ internal fun navTabs(): List<Pair<String, Class<out Activity>>> {
         "HD" to HdTvActivity::class.java, "Guide" to GuideActivity::class.java, "Favourites" to FavoritesActivity::class.java)
     return Order.arrange(tabs.filter { jio || it.second != LiveTvActivity::class.java && it.second != GuideActivity::class.java }, "tabs") { it.first }
 }
+
+/** The tab to open on: the one chosen in Settings, or Home while that one isn't available (Jio TV and Guide when signed out). */
+internal fun startTab(): Pair<String, Class<out Activity>> = navTabs().firstOrNull { it.first == Store.startTab } ?: ("Home" to HomeActivity::class.java)
 
 /** Logo, pill navigation, and on the right: scan status, clock, refresh and settings. Identical on every main screen. */
 class Header(private val a: Activity, private val current: Class<*>) {

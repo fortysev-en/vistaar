@@ -215,8 +215,8 @@ class GuideActivity : Activity() {
         val airing = p == null || now in p.start until p.end
         pArt.setStyle(ch.id.toInt())
         pLive.visibility = if (airing) View.VISIBLE else View.GONE
-        pTitle.text = p?.title ?: ch.name
-        pWhen.text = if (p == null) "${ch.name}  ·  ${Catalog.numberOf(ch.id)}" else "${ch.name}  ·  ${if (airing) "Now  ·  " else ""}${fmt(p.start)} – ${fmt(p.end)}"
+        pTitle.text = p?.title ?: Catalog.label(ch)
+        pWhen.text = if (p == null) "${Catalog.label(ch)}  ·  ${Catalog.numberOf(ch.id)}" else "${Catalog.label(ch)}  ·  ${if (airing) "Now  ·  " else ""}${fmt(p.start)} – ${fmt(p.end)}"
         pDesc.text = p?.desc?.ifEmpty { null } ?: if (p == null) "No schedule is available for this channel right now." else ""
         watch.visibility = if (airing) View.VISIBLE else View.GONE
         watch.setOnClickListener { play(ch) }
@@ -277,7 +277,7 @@ class GuideActivity : Activity() {
 
         fun bind(c: Channel) {
             ch = c; programs = null; blocks = emptyList(); loadedDay = day; timeline.removeAllViews()
-            logo.bind(c); num.text = Catalog.numberOf(c.id).toString(); name.text = c.name
+            logo.bind(c); num.text = Catalog.numberOf(c.id).toString(); name.text = Catalog.label(c)
             val d = day
             Epg.load(c.id, d) { l -> if (ch === c && loadedDay == d) { programs = l; layout() } }
         }

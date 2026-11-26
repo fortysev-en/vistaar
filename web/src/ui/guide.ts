@@ -84,8 +84,8 @@ export function guideScreen(p?: { id?: string; from?: { name: Name; params?: any
     const airing = !pr || (now >= pr.start && now < pr.end)
     art.style.background = artBg(ch.id)
     live.style.display = airing ? '' : 'none'; live.style.visibility = ''
-    title.textContent = pr ? pr.title : ch.name
-    when.textContent = pr ? ch.name + '  ·  ' + (airing ? 'Now  ·  ' : '') + fmtTime(pr.start) + ' – ' + fmtTime(pr.end) : ch.name + '  ·  ' + Catalog.numberOf(ch)
+    title.textContent = pr ? pr.title : Catalog.label(ch)
+    when.textContent = pr ? Catalog.label(ch) + '  ·  ' + (airing ? 'Now  ·  ' : '') + fmtTime(pr.start) + ' – ' + fmtTime(pr.end) : Catalog.label(ch) + '  ·  ' + Catalog.numberOf(ch)
     desc.textContent = pr && pr.desc ? pr.desc : pr ? '' : 'No schedule is available for this channel right now.'
     watch.className = 'btn small' + (airing ? '' : ' hide')
     watch.onclick = () => play(ch)

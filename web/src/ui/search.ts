@@ -36,7 +36,7 @@ export function searchScreen(): Screen {
   function update() {
     qText.textContent = query; hint.style.display = query ? 'none' : ''
     const pool = Catalog.playableChannels(); const q = query.trim().toLowerCase()
-    const hits = !q ? (Catalog.favourites().length ? Catalog.favourites() : Catalog.recents().length ? Catalog.recents() : pool.slice(0, 9)) : pool.concat(Free.shown).filter((c) => c.name.toLowerCase().indexOf(q) >= 0)
+    const hits = !q ? (Catalog.favourites().length ? Catalog.favourites() : Catalog.recents().length ? Catalog.recents() : pool.slice(0, 9)) : pool.concat(Free.shown).filter((c) => (c.name + " " + Catalog.label(c)).toLowerCase().indexOf(q) >= 0)
     heading.textContent = !q ? 'Suggested for tonight' : 'Channels  ·  ' + hits.length
     none.textContent = q && !hits.length ? (Catalog.scanning ? 'No match yet. Still checking which channels your plan includes.' : `No matches for “${query.trim()}”. Try a channel name.`) : ''
     clear(grid)

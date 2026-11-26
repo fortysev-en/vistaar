@@ -25,13 +25,8 @@ open class FreeTvActivity : Activity() {
     protected open fun pool(): List<Channel> = Catalog.freeChannels()
     protected open fun catOf(ch: Channel): String = Free.catName(ch.lang)
     protected open fun catOrder(counts: Map<String, Int>): List<String> = Free.cats.filter { it in counts }
-    /** Text for an empty list, or null for the default. */
-    protected open fun emptyMessage(): String? = null
-    protected open val hint = "OK to watch  ·  Hold OK to favourite  ·  ◀ categories"
     /** Key of the viewer's saved category order, or null when the categories are fixed (HD and Favourites). */
     protected open val orderKey: String? = "free"
-    /** Called after a long-press toggled the favourite of [ch]. */
-    protected open fun onFavToggled(ch: Channel) {}
 
     private data class Cat(val name: String?, val count: Int) // name null = all
 
@@ -92,7 +87,7 @@ open class FreeTvActivity : Activity() {
             addView(pMeta, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(8) })
             addView(pNote, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(20) })
             addView(LinearLayout(context).apply { noClip(); addView(watchBtn, LinearLayout.LayoutParams(-2, px(60))) }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(24) })
-            addView(txt(hint, 18, N.DIM), LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(20) })
+            addView(txt("OK to watch  ·  Hold OK to favourite  ·  ◀ categories", 18, N.DIM), LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(20) })
         }
         val body = LinearLayout(this).apply {
             noClip()
@@ -122,7 +117,7 @@ open class FreeTvActivity : Activity() {
 
     private fun play(ch: Channel) { startActivity(Intent(this, PlayerActivity::class.java).putExtra("id", ch.id).putExtra("hd", hdOnly).putExtra("ids", channels.map { it.id }.toLongArray())) }
 
-    protected fun refresh() {
+    private fun refresh() {
         header.update()
         val all = pool()
         val counts = all.groupingBy { catOf(it) }.eachCount()
@@ -133,7 +128,7 @@ open class FreeTvActivity : Activity() {
         val newList = if (cat == null) all else all.filter { catOf(it) == cat }
         val firstFill = channels.isEmpty() && newList.isNotEmpty()
         if (newList != channels) { channels = newList; chList.adapter?.notifyDataSetChanged() }
-        empty.text = emptyMessage() ?: when {
+        empty.text = when {
             Free.loading || Catalog.scanning && hdOnly -> "Loading channels…"
             Free.error != null -> "Couldn't load the free channels (${Free.error}). Check your connection, then press the refresh button."
             else -> "No channels found."
@@ -162,7 +157,7 @@ open class FreeTvActivity : Activity() {
         backdrop.setStyle(ch.id.toInt()); pArt.setStyle(ch.id.toInt()); pLogo.bind(ch)
         val free = ch.url.isNotEmpty()
         pCat.text = langName(ch.lang) + if (ch.hd) " · HD" else ""
-        pSub.text = "${ch.name} · ${Catalog.numberOf(ch.id)}"; pTitle.text = ch.name; pMeta.text = (if (free) "Free TV" else "Jio TV") + if (ch.hd) " · HD" else ""
+        pSub.text = "${Catalog.label(ch)} · ${Catalog.numberOf(ch.id)}"; pTitle.text = Catalog.label(ch); pMeta.text = (if (free) "Free TV" else "Jio TV") + if (ch.hd) " · HD" else ""
         pNote.text = if (free) "A free stream from the community iptv-org playlist. Availability varies, and some channels may be offline." else "On your Jio plan."
     }
 
@@ -252,10 +247,10 @@ open class FreeTvActivity : Activity() {
             @Suppress("UNCHECKED_CAST") val v = row.tag as Array<Any?>
             v[5] = ch
             (v[0] as TextView).text = Catalog.numberOf(ch.id).toString(); (v[1] as LogoBox).bind(ch)
-            (v[2] as TextView).text = ch.name; (v[3] as TextView).text = langName(ch.lang) + if (ch.hd) " · HD" else ""
+            (v[2] as TextView).text = Catalog.label(ch); (v[3] as TextView).text = langName(ch.lang) + if (ch.hd) " · HD" else ""
             (v[4] as View).visibility = if (Catalog.isFav(ch.id)) View.VISIBLE else View.GONE
             row.setOnClickListener { play(ch) }
-            row.setOnLongClickListener { Catalog.toggleFav(ch.id); notifyItemChanged(p); onFavToggled(ch); true }
+            row.setOnLongClickListener { Catalog.toggleFav(ch.id); notifyItemChanged(p); true }
             row.setOnKeyListener { _, code, e -> chKey(code, e, h.bindingAdapterPosition) }
         }
     }

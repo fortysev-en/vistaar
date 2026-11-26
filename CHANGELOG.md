@@ -9,13 +9,14 @@ Android, webOS and Samsung Tizen share the Guide, Favourites, splash and disclai
 ### Added
 - **Phone remote** (Settings, Remote): turn it on, scan the QR code or type the address on a phone on the same Wi-Fi, enter the 4-digit PIN shown on the TV, and the phone becomes arrow keys, OK, Back, Home, Menu and CH +/-, plus a text box for Search and the playlist link. Off by default, home network only, five wrong PINs lock it for a minute, and it switches itself off after 15 minutes without use. A phone icon shows in the corner while one is connected.
 - **First-run flow**: a splash screen with the Vistaar mark (and, on Android, the fortyseven wordmark), then a disclaimer with *Accept and continue* (also in Settings, About). Jio sign-in no longer opens the app; it lives in Settings, so the app starts straight in free mode.
-- **Rearrange tabs and categories** (all platforms): hold OK on a top tab to move it with Left and Right, or on a category (Jio TV genres or languages, Free TV) to move it with Up and Down; press OK to drop it. The order is remembered, and Settings, Library, Reset order puts everything back. The app opens on whichever tab you put first, and Back from it goes to Home.
+- **Rearrange tabs and categories** (all platforms): hold OK on a top tab to move it with Left and Right, or on a category (Jio TV genres or languages, Free TV) to move it with Up and Down; press OK to drop it. The order is remembered, and Settings, Library, Reset order puts everything back.
+- **Startup tab** (all platforms): Settings, Startup chooses which tab the app opens on (Home unless you pick another). Back from that tab goes to Home.
 - **Pick your categories** (all platforms): the first-run screens now ask for languages and then categories. Pick them in order of importance. Home shows Recently watched, Your favourites, then a row per category (your picks first, up to eight rows, more if you picked more), with Jio and free channels together. It replaces the Free TV and language rows. Change it in Settings, Library, Home categories.
 - **Guide as a time grid** (Android and webOS): channels down the left, a three-hour window of programmes across, the focused programme described above, a day picker, and Earlier, Now and Later controls.
 - **Samsung Tizen build** (experimental): the web app packaged as `Vistaar-Tizen-0.4.0.wgt` for Samsung TVs from 2020, with the Tizen remote keys and exit. Install it with the Apps2Samsung phone app; see [docs/tizen-install.md](docs/tizen-install.md). Tried in the Samsung TV emulator and on one real TV; Jio's encrypted channels are untested on Tizen.
 
 ### Changed
-- **Favourites** has the Jio TV and Free TV layout (categories, list, live preview) instead of a card grid.
+- **Favourites** is a grid of large channel-logo cards. Hold OK on a card to move it, rename it or remove it. Your order is kept, and a new name shows wherever that favourite appears.
 - In the player, Up and Down show the guide first; only while it is showing do they change channel. The remote's CH + and - still change it at once.
 - Up and Down in the player stay inside the list you opened it from (a category on Jio TV, Free TV, HD or Favourites).
 - Your channels and favourites show as soon as the app opens: the last channel list is kept and refreshed in the background, instead of waiting for Jio on every start.

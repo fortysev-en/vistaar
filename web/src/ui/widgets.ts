@@ -22,7 +22,7 @@ export function logoBox(ch: Channel, size = 56): HTMLElement {
     img.onerror = () => { img.remove(); el.insertBefore(document.createTextNode(initials), el.firstChild) }
     el.appendChild(img)
   } else el.appendChild(document.createTextNode(initials))
-  if (ch.premium) { const c = h('span', { class: 'crown' }); c.appendChild(icon('crown', Math.max(16, Math.round(size / 3)))); el.appendChild(c) }
+  if (ch.premium) { const c = h('span', { class: 'crown' }); c.appendChild(icon('crown', Math.min(32, Math.max(16, Math.round(size / 3))))); el.appendChild(c) }
   return el
 }
 
@@ -37,7 +37,7 @@ export function card(ch: Channel, sub: string, onOpen: () => void, onHold: () =>
   upd()
   const el = h('div', { class: 'card' + (tall ? ' tall' : ''), f: true, style: { background: artBg(ch.id) }, onclick: onOpen, onvhold: () => { onHold(); upd() } },
     h('div', { class: 'shade' }), h('div', { class: 'tl' }, liveBadge()), star,
-    h('div', { class: 'foot' }, logoBox(ch, 48), h('div', { class: 't' }, h('div', { class: 'a1' }, ch.name), h('div', { class: 'a2' }, sub))))
+    h('div', { class: 'foot' }, logoBox(ch, 48), h('div', { class: 't' }, h('div', { class: 'a1' }, Catalog.label(ch)), h('div', { class: 'a2' }, sub))))
   return el
 }
 

@@ -206,7 +206,7 @@ class LiveTvActivity : Activity() {
         pp.show(ch)
         backdrop.setStyle(ch.id.toInt()); pArt.setStyle(ch.id.toInt()); pLogo.bind(ch)
         pLang.text = langName(ch.lang) + if (ch.hd) " · HD" else ""
-        pSub.text = "${ch.name} · ${Catalog.numberOf(ch.id)}"; pTitle.text = ch.name; pMeta.text = ""; pDesc.text = ""
+        pSub.text = "${Catalog.label(ch)} · ${Catalog.numberOf(ch.id)}"; pTitle.text = Catalog.label(ch); pMeta.text = ""; pDesc.text = ""
         pStart.text = ""; pEnd.text = ""; pBar.progress = 0f
         Epg.load(ch.id) { list ->
             if (previewCh?.id != ch.id) return@load
@@ -310,7 +310,7 @@ class LiveTvActivity : Activity() {
             @Suppress("UNCHECKED_CAST") val v = row.tag as Array<Any?>
             v[6] = ch
             (v[0] as TextView).text = Catalog.numberOf(ch.id).toString(); (v[1] as LogoBox).bind(ch)
-            (v[2] as TextView).text = if (Catalog.isBad(ch.id)) "${ch.name}  ·  may not play" else ch.name; (v[3] as TextView).text = langName(ch.lang); (v[4] as Bar).progress = 0f
+            (v[2] as TextView).text = if (Catalog.isBad(ch.id)) "${Catalog.label(ch)}  ·  may not play" else Catalog.label(ch); (v[3] as TextView).text = langName(ch.lang); (v[4] as Bar).progress = 0f
             (v[5] as View).visibility = if (Catalog.isFav(ch.id)) View.VISIBLE else View.GONE
             Epg.load(ch.id) { list ->
                 if (h.bindingAdapterPosition != p || channels.getOrNull(p)?.id != ch.id) return@load

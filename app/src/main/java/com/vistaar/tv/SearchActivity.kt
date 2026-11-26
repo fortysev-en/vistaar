@@ -114,7 +114,7 @@ class SearchActivity : Activity(), RemoteText {
         queryText.text = query; hintText.visibility = if (query.isEmpty()) View.VISIBLE else View.GONE
         val playable = Catalog.playableChannels()
         val hits = if (query.isBlank()) Catalog.favourites().ifEmpty { Catalog.recents() }.ifEmpty { playable.take(9) }
-                   else (playable + Catalog.freeChannels()).filter { it.name.contains(query.trim(), ignoreCase = true) }
+                   else (playable + Catalog.freeChannels()).filter { it.name.contains(query.trim(), ignoreCase = true) || Catalog.label(it).contains(query.trim(), ignoreCase = true) }
         heading.text = if (query.isBlank()) "Suggested for tonight" else "Channels  ·  ${hits.size}"
         none.visibility = if (query.isNotBlank() && hits.isEmpty()) View.VISIBLE else View.GONE
         none.text = if (Catalog.scanning) "No match yet. Still checking which channels your plan includes." else "No matches for “${query.trim()}”. Try a channel name."

@@ -32,10 +32,10 @@ Vistaar is an **unofficial, independent client**. You can use the free channels 
 
 | File | SHA-256 |
 |---|---|
-| `Vistaar-0.4-debug.apk` | `E98F4382659A97BA5210BA950A381026D056B58FF961AE94DC69D8812432A761` |
-| `Vistaar-webOS-Installer-0.4.0.zip` | `9F9F97E2C50D7D3DDB4D09FA06CBF4B2CFE935B4A32A00DC875E2F1A613F246E` |
-| `Vistaar-webOS-0.4.0.ipk` | `7EA0A62B380AFBAAC362E69B0D99CAE995F40815BCC12D323C7CFA5D007D4ACD` |
-| `Vistaar-Tizen-0.4.0.wgt` | `E07F2BA63C372FCC6DE2F4C0E365FEFB6F9EF7EC9FA9DD8D04645F18C08399E2` |
+| `Vistaar-0.4-debug.apk` | `AE2BC2A2D319F22EEDE729C04825B6D99E7423F57FD0E8C5C7ACC1D446D7DE45` |
+| `Vistaar-webOS-Installer-0.4.0.zip` | `3E6C89878DCAD2F928E0162FF0B24B7C62EE1583A72B1D469725A90E4EC5D3D3` |
+| `Vistaar-webOS-0.4.0.ipk` | `814A11E358F4749DFDE6BA9C6D24F68E0B7CA5182A369BE01F750DD8E4D1FE40` |
+| `Vistaar-Tizen-0.4.0.wgt` | `6453C2CBE8AA4185F443044B2F8A8633E4ED806175232612C5CD1A9EB9C4AF3B` |
 
 </details>
 
@@ -77,8 +77,8 @@ Apps2Samsung is a separate project, not made or checked by Vistaar. Jio's encryp
 - **Jio TV** with your own account: only the channels your plan includes, browsed by genre or language.
 - **Home made for you**: recently watched, favourites, then rows for the categories you pick.
 - **Programme guide** as a time grid, for Jio channels.
-- **Favourites**, **Search** and an **HD** tab.
-- **Your layout**: hold OK to rearrange the top tabs and categories. The app opens on your first tab.
+- **Favourites** as large logo cards that you can reorder and rename, plus **Search** and an **HD** tab.
+- **Your layout**: hold OK to rearrange the top tabs and categories, and choose the tab the app opens on (Settings, Startup).
 - **Player** with a guide overlay, quality, audio track and aspect controls.
 - **Phone remote** (Android TV only): use your phone as the remote and keyboard on the same Wi-Fi.
 
@@ -97,7 +97,7 @@ Apps2Samsung is a separate project, not made or checked by Vistaar. Jio's encryp
 | Button | What it does |
 |---|---|
 | **OK** | Open or play. In the player, show the controls. |
-| **Hold OK** | On a channel: add or remove a favourite. On a top tab or category: move it, then press OK to drop it. |
+| **Hold OK** | On a channel: add or remove a favourite. In Favourites: move, rename or remove the card. On a top tab or category: move it, then press OK to drop it. |
 | **Up / Down** in the player | Show the guide; press again to change channel. |
 | **CH + / -** | Change channel straight away. |
 | **Back** | Go back. On Home it asks before exiting. |

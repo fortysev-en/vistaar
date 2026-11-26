@@ -72,11 +72,31 @@ object Catalog {
     private fun saveBad(m: Map<Long, Long>) = Store.prefs.edit().putString("bad", m.entries.joinToString(",") { "${it.key}:${it.value}" }).apply()
     fun markBad(id: Long) = saveBad(bad() + (id to System.currentTimeMillis()))
     fun clearBad(id: Long) { val m = bad(); if (id in m) saveBad(m - id) }
-    fun favourites() = playableChannels().filter { it.id in favs } + Free.shown.filter { it.id in favs }
+    /** Saved channels in the viewer's own order (ones never moved keep Jio first, then free, after the arranged ones). */
+    fun favourites(): List<Channel> = Order.arrange(playableChannels().filter { it.id in favs } + Free.shown.filter { it.id in favs }, favOrder()) { it.id.toString() }
+
+    private fun favOrder() = Store.prefs.getString("favOrder", "")!!.split(",").filter { it.isNotEmpty() }
+    /** [ids] is the order on screen; saved ids that are hidden right now (another language, signed out) are kept behind them. */
+    fun saveFavOrder(ids: List<Long>) {
+        val shown = ids.map { it.toString() }
+        Store.prefs.edit().putString("favOrder", (shown + favOrder().filter { it !in shown }).joinToString(",")).apply()
+    }
+
+    /** Names the viewer gave to favourites; shown everywhere in place of the channel's own name. */
+    private fun names(): org.json.JSONObject = try { org.json.JSONObject(Store.prefs.getString("favNames", "{}")!!) } catch (e: Exception) { org.json.JSONObject() }
+    fun label(ch: Channel): String = if (ch.id !in favs) ch.name else names().optString(ch.id.toString()).ifEmpty { ch.name }
+    /** A blank [name], or the channel's own, goes back to the original. */
+    fun rename(ch: Channel, name: String) {
+        val n = names(); val t = name.trim()
+        if (t.isEmpty() || t == ch.name) n.remove(ch.id.toString()) else n.put(ch.id.toString(), t)
+        Store.prefs.edit().putString("favNames", n.toString()).apply()
+    }
     fun freeChannels() = Free.shown
 
     fun toggleFav(id: Long): Boolean {
         if (!favs.remove(id)) favs.add(id)
+        else Store.prefs.edit().putString("favNames", names().apply { remove(id.toString()) }.toString())
+            .putString("favOrder", favOrder().filter { it != id.toString() }.joinToString(",")).apply() // a removed favourite forgets its name and place
         Store.prefs.edit().putString("favs", favs.joinToString(",")).apply()
         return id in favs
     }
@@ -98,7 +118,7 @@ object Catalog {
     fun numberOf(id: Long) = (if (id < 0) Free.shown else playableChannels()).indexOfFirst { it.id == id } + 1
 
     fun clearFavs() {
-        favs.clear(); Store.prefs.edit().remove("favs").apply()
+        favs.clear(); Store.prefs.edit().remove("favs").remove("favNames").remove("favOrder").apply()
     }
 
     fun reset() {

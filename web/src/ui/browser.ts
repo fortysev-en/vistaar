@@ -11,12 +11,12 @@ import { Free } from '../free'
 
 /** Jio TV, Free TV and HD: categories | channel list | live preview. One screen, three pools (port of LiveTvActivity / FreeTvActivity / HdTvActivity). */
 
-type Kind = 'jio' | 'free' | 'hd' | 'favs'
+type Kind = 'jio' | 'free' | 'hd'
 interface Cat { key: string; label: string; count: number }
 const memo: { [k: string]: { cat: string; byGenre: boolean } } = {}
 
 export function browserScreen(kind: Kind): Screen {
-  const name: Name = kind === 'jio' ? 'jiotv' : kind === 'free' ? 'freetv' : kind === 'hd' ? 'hd' : 'favs'
+  const name: Name = kind === 'jio' ? 'jiotv' : kind === 'free' ? 'freetv' : 'hd'
   const m = memo[kind] || (memo[kind] = { cat: '*', byGenre: Store.str('liveByGenre') !== '0' })
   let cats: Cat[] = []
   let cat = m.cat
@@ -36,7 +36,7 @@ export function browserScreen(kind: Kind): Screen {
     render: (ch) => rowEl(ch),
     onFocus: (ch) => showPreview(ch),
     onOpen: (ch) => play(ch),
-    onHold: (ch) => { Catalog.toggleFav(ch.id); if (kind === 'favs') refresh(); else list.refresh() }, // a removed favourite leaves the list
+    onHold: (ch) => { Catalog.toggleFav(ch.id); list.refresh() },
   })
 
   // ---- preview panel
@@ -50,7 +50,7 @@ export function browserScreen(kind: Kind): Screen {
   const watch = h('div', { class: 'btn small', f: true, onclick: () => preview && play(preview) }, icon('play', 22), 'Watch')
   const acts = h('div', { class: 'acts' }, watch, kind === 'jio' ? h('div', { class: 'btn small ghost', f: true, onclick: () => App.go('guide') }, 'Schedule') : null)
   const aside = h('div', { class: 'col-aside aside' }, pArt, pSub, pTitle, pMeta, pTm, pDesc, acts,
-    h('div', { class: 'hint' }, kind === 'favs' ? 'OK to watch  ·  Hold OK to remove  ·  ◀ categories' : 'OK to watch  ·  Hold OK to favourite  ·  ◀ categories'))
+    h('div', { class: 'hint' }, 'OK to watch  ·  Hold OK to favourite  ·  ◀ categories'))
 
   const body = h('div', { class: 'body' },
     h('div', { class: 'col-cats' }, tabs, catBox),
@@ -62,12 +62,11 @@ export function browserScreen(kind: Kind): Screen {
   function pool(): Channel[] {
     if (kind === 'jio') return Catalog.playableChannels()
     if (kind === 'free') return Catalog.freeChannels()
-    if (kind === 'favs') return Catalog.favourites()
     return Catalog.playableChannels().filter((c) => c.hd).concat(Catalog.freeChannels().filter((c) => c.hd))
   }
   function catOf(c: Channel): string {
     if (kind === 'free') return Free.catName(c.lang)
-    if (kind === 'hd' || kind === 'favs') return c.url ? 'Free TV' : 'Jio TV'
+    if (kind === 'hd') return c.url ? 'Free TV' : 'Jio TV'
     if (byGenre) return String(GENRES.some((g) => g[0] === c.cat) ? c.cat : 0)
     return String(c.lang)
   }
@@ -84,7 +83,7 @@ export function browserScreen(kind: Kind): Screen {
   function defaultOrder(counts: { [k: string]: number }): string[] {
     const keys = Object.keys(counts)
     if (kind === 'free') return Free.cats.filter((c) => counts[c])
-    if (kind === 'hd' || kind === 'favs') return ['Jio TV', 'Free TV'].filter((c) => counts[c])
+    if (kind === 'hd') return ['Jio TV', 'Free TV'].filter((c) => counts[c])
     if (byGenre) return GENRES.map((g) => String(g[0])).concat('0').filter((k) => counts[k])
     return keys.sort((a, b) => (a === '1' ? 0 : a === '6' ? 1 : 2) - (b === '1' ? 0 : b === '6' ? 1 : 2) || counts[b] - counts[a])
   }
@@ -109,7 +108,6 @@ export function browserScreen(kind: Kind): Screen {
     if (wasEmpty && shown.length) list.focusIndex(0) // first fill: land on the first channel, like the Android app
   }
   function emptyText(): string {
-    if (kind === 'favs') return 'No favourites yet. Hold OK on any channel to save it here.'
     if (kind === 'free') return Free.loading ? 'Loading the free channels…' : Free.error ? 'Couldn’t load the free channels. ' + Free.error : 'No channels in this list.'
     if (kind === 'jio') return Catalog.scanning ? 'Checking which channels your plan includes…' : 'No channels found for your plan and languages.'
     return Catalog.scanning || Free.loading ? 'Loading HD channels…' : 'No HD channels found.'
@@ -156,7 +154,7 @@ export function browserScreen(kind: Kind): Screen {
     const row = h('div', null,
       h('span', { class: 'num s' }, Catalog.numberOf(ch)),
       logoBox(ch, 56),
-      h('div', { class: 'info' }, h('div', { class: 'nmr' }, h('div', { class: 'nm p' }, bad ? ch.name + '  ·  may not play' : ch.name), star), prog, kind === 'jio' ? bar : null),
+      h('div', { class: 'info' }, h('div', { class: 'nmr' }, h('div', { class: 'nm p' }, bad ? Catalog.label(ch) + '  ·  may not play' : Catalog.label(ch)), star), prog, kind === 'jio' ? bar : null),
       liveBadge())
     row.querySelector('.logo')!.setAttribute('style', 'margin-left:0')
     if (!ch.url) Epg.load(ch.id).then((l) => { const p = Epg.now(l); if (!p) return; prog.textContent = p.title; bar.style.visibility = ''; (bar.firstChild as HTMLElement).style.width = frac(p) * 100 + '%' })
@@ -171,9 +169,9 @@ export function browserScreen(kind: Kind): Screen {
     pArt.style.background = artBg(ch.id)
     clear(pLogo); pLogo.appendChild(logoBox(ch, 64))
     pLang.textContent = langName(ch.lang) + (ch.hd ? ' · HD' : '')
-    pSub.textContent = ch.name + ' · ' + Catalog.numberOf(ch)
-    pTitle.textContent = ch.name
-    pMeta.textContent = ch.url ? (kind === 'hd' || kind === 'favs' ? 'Free TV' : Free.catName(ch.lang)) + (ch.hd ? ' · HD' : '') + ' · a free stream, availability varies' : ''
+    pSub.textContent = Catalog.label(ch) + ' · ' + Catalog.numberOf(ch)
+    pTitle.textContent = Catalog.label(ch)
+    pMeta.textContent = ch.url ? (kind === 'hd' ? 'Free TV' : Free.catName(ch.lang)) + (ch.hd ? ' · HD' : '') + ' · a free stream, availability varies' : ''
     pDesc.textContent = ch.url ? 'A free stream from the community iptv-org playlist. Availability varies, and some channels may be offline.' : ''
     pTm.className = 'tm hide'
     if (!ch.url) Epg.load(ch.id).then((l) => {

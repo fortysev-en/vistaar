@@ -42,6 +42,7 @@
         <activity android:name=".SearchActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".RemoteActivity" android:exported="false" />
+        <activity android:name=".RenameActivity" android:exported="false" />
         <activity
             android:name=".PlayerActivity"
             android:exported="false"
