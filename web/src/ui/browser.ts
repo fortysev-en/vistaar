@@ -1,3 +1,4 @@
+import { beginMove, Order } from './reorder'
 import { Catalog, Epg } from '../catalog'
 import { clear, h, icon } from '../dom'
 import { focused, focusFirst, setFocus } from '../nav/focus'
@@ -10,12 +11,12 @@ import { Free } from '../free'
 
 /** Jio TV, Free TV and HD: categories | channel list | live preview. One screen, three pools (port of LiveTvActivity / FreeTvActivity / HdTvActivity). */
 
-type Kind = 'jio' | 'free' | 'hd'
+type Kind = 'jio' | 'free' | 'hd' | 'favs'
 interface Cat { key: string; label: string; count: number }
 const memo: { [k: string]: { cat: string; byGenre: boolean } } = {}
 
 export function browserScreen(kind: Kind): Screen {
-  const name: Name = kind === 'jio' ? 'jiotv' : kind === 'free' ? 'freetv' : 'hd'
+  const name: Name = kind === 'jio' ? 'jiotv' : kind === 'free' ? 'freetv' : kind === 'hd' ? 'hd' : 'favs'
   const m = memo[kind] || (memo[kind] = { cat: '*', byGenre: Store.str('liveByGenre') !== '0' })
   let cats: Cat[] = []
   let cat = m.cat
@@ -35,7 +36,7 @@ export function browserScreen(kind: Kind): Screen {
     render: (ch) => rowEl(ch),
     onFocus: (ch) => showPreview(ch),
     onOpen: (ch) => play(ch),
-    onHold: (ch) => { Catalog.toggleFav(ch.id); list.refresh() },
+    onHold: (ch) => { Catalog.toggleFav(ch.id); if (kind === 'favs') refresh(); else list.refresh() }, // a removed favourite leaves the list
   })
 
   // ---- preview panel
@@ -49,7 +50,7 @@ export function browserScreen(kind: Kind): Screen {
   const watch = h('div', { class: 'btn small', f: true, onclick: () => preview && play(preview) }, icon('play', 22), 'Watch')
   const acts = h('div', { class: 'acts' }, watch, kind === 'jio' ? h('div', { class: 'btn small ghost', f: true, onclick: () => App.go('guide') }, 'Schedule') : null)
   const aside = h('div', { class: 'col-aside aside' }, pArt, pSub, pTitle, pMeta, pTm, pDesc, acts,
-    h('div', { class: 'hint' }, 'OK to watch  ·  Hold OK to favourite  ·  ◀ categories'))
+    h('div', { class: 'hint' }, kind === 'favs' ? 'OK to watch  ·  Hold OK to remove  ·  ◀ categories' : 'OK to watch  ·  Hold OK to favourite  ·  ◀ categories'))
 
   const body = h('div', { class: 'body' },
     h('div', { class: 'col-cats' }, tabs, catBox),
@@ -61,11 +62,12 @@ export function browserScreen(kind: Kind): Screen {
   function pool(): Channel[] {
     if (kind === 'jio') return Catalog.playableChannels()
     if (kind === 'free') return Catalog.freeChannels()
+    if (kind === 'favs') return Catalog.favourites()
     return Catalog.playableChannels().filter((c) => c.hd).concat(Catalog.freeChannels().filter((c) => c.hd))
   }
   function catOf(c: Channel): string {
     if (kind === 'free') return Free.catName(c.lang)
-    if (kind === 'hd') return c.url ? 'Free TV' : 'Jio TV'
+    if (kind === 'hd' || kind === 'favs') return c.url ? 'Free TV' : 'Jio TV'
     if (byGenre) return String(GENRES.some((g) => g[0] === c.cat) ? c.cat : 0)
     return String(c.lang)
   }
@@ -73,10 +75,16 @@ export function browserScreen(kind: Kind): Screen {
     if (kind === 'jio') return byGenre ? (GENRES.filter((g) => String(g[0]) === key)[0] || [0, 'Other'])[1] as string : langName(Number(key))
     return key
   }
+  /** Key of the viewer's saved category order, or '' when the categories are fixed (HD and Favourites). */
+  const orderKey = () => (kind === 'free' ? 'free' : kind === 'jio' ? 'jio.' + (byGenre ? 'genre' : 'lang') : '')
   function orderOf(counts: { [k: string]: number }): string[] {
+    const l = defaultOrder(counts)
+    return orderKey() ? Order.arrange(l, orderKey(), (k) => k) : l
+  }
+  function defaultOrder(counts: { [k: string]: number }): string[] {
     const keys = Object.keys(counts)
     if (kind === 'free') return Free.cats.filter((c) => counts[c])
-    if (kind === 'hd') return ['Jio TV', 'Free TV'].filter((c) => counts[c])
+    if (kind === 'hd' || kind === 'favs') return ['Jio TV', 'Free TV'].filter((c) => counts[c])
     if (byGenre) return GENRES.map((g) => String(g[0])).concat('0').filter((k) => counts[k])
     return keys.sort((a, b) => (a === '1' ? 0 : a === '6' ? 1 : 2) - (b === '1' ? 0 : b === '6' ? 1 : 2) || counts[b] - counts[a])
   }
@@ -101,6 +109,7 @@ export function browserScreen(kind: Kind): Screen {
     if (wasEmpty && shown.length) list.focusIndex(0) // first fill: land on the first channel, like the Android app
   }
   function emptyText(): string {
+    if (kind === 'favs') return 'No favourites yet. Hold OK on any channel to save it here.'
     if (kind === 'free') return Free.loading ? 'Loading the free channels…' : Free.error ? 'Couldn’t load the free channels. ' + Free.error : 'No channels in this list.'
     if (kind === 'jio') return Catalog.scanning ? 'Checking which channels your plan includes…' : 'No channels found for your plan and languages.'
     return Catalog.scanning || Free.loading ? 'Loading HD channels…' : 'No HD channels found.'
@@ -111,6 +120,11 @@ export function browserScreen(kind: Kind): Screen {
     cats.forEach((c) => {
       const row = h('div', { class: 'cat' + (c.key === cat ? ' on' : ''), f: true, 'data-key': c.key, onclick: () => select(c.key) }, h('span', null, c.label), h('span', { class: 'n' }, c.count))
       row.addEventListener('vfocus', () => { ensureVisible(catBox, row); clearTimeout(selTimer); selTimer = window.setTimeout(() => { if (row.classList.contains('focus')) select(c.key) }, 220) })
+      if (orderKey()) row.addEventListener('vhold', () => beginMove(row, 'y', 1, () => {
+        const keys = Array.prototype.map.call(catBox.children, (r: HTMLElement) => r.getAttribute('data-key') || '') as string[]
+        cats = keys.map((k) => cats.filter((x) => x.key === k)[0])
+        Order.save(orderKey(), keys.slice(1))
+      }))
       catBox.appendChild(row)
     })
     if (tabs) {
@@ -159,7 +173,7 @@ export function browserScreen(kind: Kind): Screen {
     pLang.textContent = langName(ch.lang) + (ch.hd ? ' · HD' : '')
     pSub.textContent = ch.name + ' · ' + Catalog.numberOf(ch)
     pTitle.textContent = ch.name
-    pMeta.textContent = ch.url ? (kind === 'hd' ? 'Free TV' : Free.catName(ch.lang)) + (ch.hd ? ' · HD' : '') + ' · a free stream, availability varies' : ''
+    pMeta.textContent = ch.url ? (kind === 'hd' || kind === 'favs' ? 'Free TV' : Free.catName(ch.lang)) + (ch.hd ? ' · HD' : '') + ' · a free stream, availability varies' : ''
     pDesc.textContent = ch.url ? 'A free stream from the community iptv-org playlist. Availability varies, and some channels may be offline.' : ''
     pTm.className = 'tm hide'
     if (!ch.url) Epg.load(ch.id).then((l) => {
@@ -185,7 +199,7 @@ export function browserScreen(kind: Kind): Screen {
 
   function play(ch: Channel) {
     if (engine) engine.stop()
-    App.go('player', { id: ch.id, list: kind, from: { name, params: undefined } })
+    App.go('player', { id: ch.id, list: kind, chs: list.items.slice(), from: { name, params: undefined } }) // zap inside what you are browsing (the chosen category)
   }
 
   function focusCat() {

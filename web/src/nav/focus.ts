@@ -39,12 +39,22 @@ export function move(dir: Dir): boolean {
 }
 
 /** Install key + pointer handling once. [onKey] sees every action first and returns true when it handled it (lists step rows themselves). */
+/** While set, every key goes here and nothing else sees it (hold-OK reorder). The handler ends it by calling grab(null). */
+let grabber: ((a: Action) => void) | null = null
+let eatUp = false
+export function grab(f: ((a: Action) => void) | null) { grabber = f }
+
 export function install(opts: { onBack: () => boolean; onKey?: (a: Action, e: KeyboardEvent) => boolean }) {
   backHandler = opts.onBack; keyHandler = opts.onKey || null
   let holdTimer = 0, held = false
   document.addEventListener('keydown', (e) => {
     const a = keyAction(e.keyCode)
     if (!a) return
+    if (grabber) {
+      e.preventDefault()
+      if (a.type === 'ok') { if (e.repeat) return; eatUp = true } // repeats of the press that started it are not a drop
+      grabber(a); return
+    }
     if (a.type === 'ok') {
       e.preventDefault()
       if (!e.repeat) { held = false; holdTimer = window.setTimeout(() => { held = true; if (current) current.dispatchEvent(new CustomEvent('vhold')) }, 600) }
@@ -58,6 +68,7 @@ export function install(opts: { onBack: () => boolean; onKey?: (a: Action, e: Ke
     const a = keyAction(e.keyCode)
     if (!a || a.type !== 'ok') return
     clearTimeout(holdTimer); e.preventDefault()
+    if (eatUp) { eatUp = false; return }
     if (!held && !(keyHandler && keyHandler(a, e)) && current) current.click()
     held = false
   })

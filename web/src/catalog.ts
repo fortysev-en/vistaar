@@ -12,18 +12,19 @@ const epgCache = new Map<string, { at: number; list: Program[] }>()
 const epgWait = new Map<string, Array<(l: Program[]) => void>>()
 
 export const Epg = {
-  cached(id: string): Program[] | null { const c = epgCache.get(id); return c && Date.now() - c.at < 120_000 ? c.list : null },
-  /** Today's programmes; free channels have no guide. Concurrent callers share one request. */
-  load(id: string): Promise<Program[]> {
+  cached(id: string, offset = 0): Program[] | null { const c = epgCache.get(id + ':' + offset); return c && Date.now() - c.at < 120_000 ? c.list : null },
+  /** A day's programmes (offset 0 = today); free channels have no guide. Concurrent callers share one request. */
+  load(id: string, offset = 0): Promise<Program[]> {
     // Free channels have no guide of their own; borrow the one of the same channel on the Jio plan, if there is one.
-    if (id[0] === 'f') { const t = Catalog.twinOf(id); return t ? this.load(t) : Promise.resolve([]) }
-    const hit = this.cached(id)
+    if (id[0] === 'f') { const t = Catalog.twinOf(id); return t ? this.load(t, offset) : Promise.resolve([]) }
+    const hit = this.cached(id, offset)
     if (hit) return Promise.resolve(hit)
+    const key = id + ':' + offset
     return new Promise((res) => {
-      const w = epgWait.get(id)
+      const w = epgWait.get(key)
       if (w) { w.push(res); return }
-      epgWait.set(id, [res])
-      Api.epg(id).then((list) => { epgCache.set(id, { at: Date.now(), list }); const ws = epgWait.get(id) || []; epgWait.delete(id); ws.forEach((f) => f(list)) })
+      epgWait.set(key, [res])
+      Api.epg(id, offset).then((list) => { epgCache.set(key, { at: Date.now(), list }); const ws = epgWait.get(key) || []; epgWait.delete(key); ws.forEach((f) => f(list)) })
     })
   },
   now(list: Program[]): Program | null { const t = Date.now(); return list.find((p) => t >= p.start && t <= p.end) || null },
@@ -100,7 +101,7 @@ export const Catalog = {
   markBad(id: string) { const b = this.bad(); b[id] = Date.now(); Store.putJson('bad', b) },
   clearBad(id: string) { const b = this.bad(); if (b[id]) { delete b[id]; Store.putJson('bad', b) } },
 
-  reset() { gen++; this.all = []; this.playable.clear(); this.scanning = false; this.scanned = 0; this.error = ''; Store.remove('ok'); Store.remove('okAt') },
+  reset() { gen++; this.all = []; this.playable.clear(); this.scanning = false; this.scanned = 0; this.error = ''; Store.remove('ok'); Store.remove('okAt'); Store.remove('chlist') },
 
   /** Loads the lists and tests every channel (8 at a time); a fresh cache of playable ids skips the test. Free-only mode loads just the free list. */
   start(force: boolean) {
@@ -110,11 +111,17 @@ export const Catalog = {
     if (!force && (this.scanning || this.all.length)) { changed(); return }
     const g = ++gen
     this.scanning = true; this.error = ''; this.scanned = 0; this.playable.clear(); if (force) this.all = []
+    // Show the last known list at once (favourites, Home, Guide) while the network refresh runs; a rescan replaces it.
+    const saved = force ? [] : Store.json<Channel[]>('chlist', [])
+    const savedOk = Store.str('ok').split(',').filter(Boolean)
+    const seeded = saved.length > 0 && savedOk.length > 0
+    if (seeded) { this.all = saved; savedOk.forEach((x) => this.playable.add(x)) }
     changed()
     ;(async () => {
       try {
         try { await Api.beginSession() } catch { /* playback may still work */ }
         const list = await Api.channels()
+        Store.putJson('chlist', list)
         const cached = Store.str('ok').split(',').filter(Boolean)
         const fresh = !force && cached.length > 0 && Date.now() - Number(Store.str('okAt') || 0) < SIX_H
         if (g !== gen) return
@@ -125,7 +132,13 @@ export const Catalog = {
           const have = new Set(cached), miss = list.filter((c) => !have.has(c.id))
           if (miss.length && Date.now() - Number(Store.str('okAt') || 0) > RECHECK_MS) this.scan(miss, g, true)
         } else this.scan(list, g)
-      } catch (e) { if (g === gen) { this.error = 'Channel list failed: ' + (e as Error).message; this.scanning = false; changed() } }
+      } catch (e) {
+        if (g !== gen) return
+        this.scanning = false
+        // Offline or Jio down: the saved list stays usable; only report an error when there is nothing to show.
+        if (!seeded) this.error = 'Channel list failed: ' + (e as Error).message
+        changed()
+      }
     })()
   },
 
@@ -135,8 +148,10 @@ export const Catalog = {
     const rank = (c: Channel) => (first.has(c.id) ? 0 : !langs.length || langs.indexOf(c.lang) >= 0 ? 1 : 2)
     const queue = all.slice().sort((a, b) => rank(a) - rank(b))
     let next = 0, running = 0, done = 0
+    const found = new Set<string>()
     const finish = () => {
       this.scanning = false
+      if (!quiet) Array.from(this.playable).forEach((id) => { if (!found.has(id)) this.playable.delete(id) }) // drop channels the saved list had but the rescan refused
       Store.put('ok', Array.from(this.playable).join(','))
       if (!quiet) Store.put('okAt', String(Date.now()))
       changed()
@@ -148,7 +163,7 @@ export const Catalog = {
         probe(ch).then((ok) => {
           running--
           if (g !== gen) return
-          if (ok) this.playable.add(ch.id)
+          if (ok) { this.playable.add(ch.id); found.add(ch.id) }
           if (!quiet) this.scanned++
           if (++done === queue.length) finish(); else { if (ok || !quiet) changed(); pump() }
         })

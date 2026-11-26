@@ -53,7 +53,7 @@ class LiveTvActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.hasAccess) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (!Store.hasAccess) { startActivity(Intent(this, SplashActivity::class.java)); finish(); return }
         header = Header(this, LiveTvActivity::class.java)
         byGenre = Store.prefs.getBoolean("liveByGenre", true)
         backdrop = ArtView(this).apply { alpha = 0.28f }
@@ -141,15 +141,15 @@ class LiveTvActivity : Activity() {
 
     override fun onPause() { super.onPause(); Catalog.onChange = null; pp.release() }
 
-    private fun play(ch: Channel) { startActivity(Intent(this, PlayerActivity::class.java).putExtra("id", ch.id)) }
+    private fun play(ch: Channel) { startActivity(Intent(this, PlayerActivity::class.java).putExtra("id", ch.id).putExtra("ids", channels.map { it.id }.toLongArray())) }
 
     private fun refresh() {
         header.update()
         val playable = Catalog.playableChannels()
         val key = { c: Channel -> if (byGenre) (if (c.cat in GENRES) c.cat else 0) else c.lang }
         val byLang = playable.groupBy(key)
-        val order = if (byGenre) (GENRES.keys + 0).filter { it in byLang }
-            else byLang.keys.sortedWith(compareBy({ if (it == 1) 0 else if (it == 6) 1 else 2 }, { -byLang.getValue(it).size }))
+        val order = Order.arrange(if (byGenre) (GENRES.keys + 0).filter { it in byLang }
+            else byLang.keys.sortedWith(compareBy({ if (it == 1) 0 else if (it == 6) 1 else 2 }, { -byLang.getValue(it).size })), orderKey()) { it.toString() }
         val newCats = listOf(Cat(-1, "All channels", playable.size)) + order.map { Cat(it, if (byGenre) GENRES[it] ?: "Other" else langName(it), byLang.getValue(it).size) }
         if (newCats != cats) updateCats(newCats)
         if (cats.none { it.lang == cat }) cat = -1
@@ -178,13 +178,26 @@ class LiveTvActivity : Activity() {
             for (i in 0 until catList.childCount) {
                 val v = catList.getChildAt(i) as LinearLayout
                 val c = cats.getOrNull(catList.getChildAdapterPosition(v)) ?: continue
-                v.tag = c; (v.getChildAt(1) as TextView).text = c.count.toString()
+                v.tag = c; if (!mover.on) (v.getChildAt(1) as TextView).text = c.count.toString()
             }
         } else {
             catList.adapter?.notifyDataSetChanged()
             val pos = cats.indexOfFirst { it.lang == focused }
             if (focused != null && pos >= 0) catList.post { catList.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus() }
         }
+    }
+
+    /** Hold OK on a category to move it with Up/Down; the order is remembered separately for genres and languages. */
+    private fun orderKey() = "jio." + if (byGenre) "genre" else "lang"
+    private val mover by lazy {
+        Mover(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, 1, { cats.size }, { f, t -> moveCat(f, t) }, { p -> catList.adapter?.notifyItemChanged(p) },
+            px(14), { catList.findViewHolderForAdapterPosition(it)?.itemView })
+    }
+    private fun moveCat(from: Int, to: Int) {
+        cats = Order.moved(cats, from, to)
+        catList.adapter?.apply { notifyItemMoved(from, to); notifyItemChanged(from); notifyItemChanged(to) }
+        Order.save(orderKey(), cats.drop(1).map { it.lang.toString() })
+        catList.post { catList.findViewHolderForAdapterPosition(to)?.itemView?.requestFocus() }
     }
 
     private fun preview(ch: Channel) {
@@ -227,10 +240,12 @@ class LiveTvActivity : Activity() {
             val c = cats[p]; val row = h.itemView as LinearLayout
             row.tag = c
             (row.getChildAt(0) as TextView).text = c.label
-            (row.getChildAt(1) as TextView).text = c.count.toString()
+            (row.getChildAt(1) as TextView).text = if (mover.on && p == mover.cur) "▲▼" else c.count.toString()
             row.paintCat(px(14), c.lang == cat, row.isFocused)
+            if (mover.on && p == mover.cur) row.lifted(px(14), true)
             row.setOnClickListener { select(c.lang) }
-            row.setOnKeyListener { _, code, e -> catList.stepFocus(h.bindingAdapterPosition, code, e, cats.size) }
+            row.setOnLongClickListener { mover.begin(this@LiveTvActivity, h.bindingAdapterPosition) }
+            row.setOnKeyListener { _, code, e -> mover.key(h.bindingAdapterPosition, code, e) || catList.stepFocus(h.bindingAdapterPosition, code, e, cats.size) }
         }
     }
 

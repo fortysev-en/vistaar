@@ -107,6 +107,12 @@ private fun recolor(v: View, f: Boolean) {
     if (v is ViewGroup) for (i in 0 until v.childCount) recolor(v.getChildAt(i), f)
 }
 
+/** Marks the item being moved (blue fill, white ring, dark text); with [on] false it goes back to its normal focused look. */
+internal fun View.lifted(radius: Int, on: Boolean) {
+    if (on) { background = rr(N.ACCENT, radius, N.TEXT, context.px(3)); recolor(this, true) }
+    else onFocusChangeListener?.onFocusChange(this, isFocused)
+}
+
 /** Artwork cards: no fill change; a dark gap and a white ring around the card, plus zoom. */
 internal fun View.ringOnFocus(ctx: Context, radius: Int, scale: Float = 1.06f) {
     isFocusable = true; isClickable = true
@@ -397,6 +403,14 @@ internal fun Activity.goTo(cls: Class<*>) {
     if (this !is HomeActivity) finish()
 }
 
+/** The header tabs this viewer has, in their saved order. Free-only mode has no Jio channels or guide. */
+internal fun navTabs(): List<Pair<String, Class<out Activity>>> {
+    val jio = Store.loggedIn
+    val tabs: List<Pair<String, Class<out Activity>>> = listOf("Home" to HomeActivity::class.java, "Jio TV" to LiveTvActivity::class.java, "Free TV" to FreeTvActivity::class.java,
+        "HD" to HdTvActivity::class.java, "Guide" to GuideActivity::class.java, "Favourites" to FavoritesActivity::class.java)
+    return Order.arrange(tabs.filter { jio || it.second != LiveTvActivity::class.java && it.second != GuideActivity::class.java }, "tabs") { it.first }
+}
+
 /** Logo, pill navigation, and on the right: scan status, clock, refresh and settings. Identical on every main screen. */
 class Header(private val a: Activity, private val current: Class<*>) {
     val view = FrameLayout(a)
@@ -426,10 +440,17 @@ class Header(private val a: Activity, private val current: Class<*>) {
             gravity = Gravity.CENTER_VERTICAL; noClip(); setPadding(a.px(6), a.px(6), a.px(6), a.px(6))
             background = rr(N.GLASS, a.px(40), N.HAIR + 0x04000000, a.px(1))
             addView(search, LinearLayout.LayoutParams(a.px(52), a.px(52)))
-            val jio = Store.loggedIn // free-only mode has no Jio channels or guide
-            listOf("Home" to HomeActivity::class.java, "Jio TV" to LiveTvActivity::class.java, "Free TV" to FreeTvActivity::class.java, "HD" to HdTvActivity::class.java, "Guide" to GuideActivity::class.java,
-                "Favourites" to FavoritesActivity::class.java).filter { jio || it.second != LiveTvActivity::class.java && it.second != GuideActivity::class.java }.forEach { (l, c) ->
-                addView(item(l, 0, c), LinearLayout.LayoutParams(-2, a.px(52)).apply { marginStart = a.px(4) })
+            // Hold OK on a tab to move it with Left/Right; the search button stays first. The order is remembered.
+            val names = HashMap<View, String>()
+            val mover = Mover(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, 1, { childCount }, { from, to ->
+                val v = getChildAt(from); removeView(v); addView(v, to)
+                Order.save("tabs", (1 until childCount).mapNotNull { names[getChildAt(it)] }); v.requestFocus()
+            }, { }, a.px(26), { getChildAt(it) })
+            navTabs().forEach { (l, c) ->
+                val v = item(l, 0, c); names[v] = l
+                v.setOnLongClickListener { mover.begin(a, indexOfChild(v)) }
+                v.setOnKeyListener { _, code, e -> mover.key(indexOfChild(v), code, e) }
+                addView(v, LinearLayout.LayoutParams(-2, a.px(52)).apply { marginStart = a.px(4) })
             }
         }
         view.addView(nav, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))

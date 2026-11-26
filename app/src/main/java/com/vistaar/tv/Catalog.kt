@@ -6,17 +6,18 @@ import java.util.concurrent.Executors
 
 /** Today's programmes per channel, fetched on demand and cached for two minutes. Main-thread API. */
 object Epg {
-    private val cache = HashMap<Long, Pair<Long, List<Program>>>()
+    private val cache = HashMap<Pair<Long, Int>, Pair<Long, List<Program>>>()
     private val pool = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
 
-    fun cached(id: Long): List<Program>? = cache[id]?.takeIf { System.currentTimeMillis() - it.first < 120_000 }?.second
+    fun cached(id: Long, offset: Int = 0): List<Program>? = cache[id to offset]?.takeIf { System.currentTimeMillis() - it.first < 120_000 }?.second
 
-    fun load(id: Long, done: (List<Program>) -> Unit) {
+    /** [offset] is the day relative to today (0 = today); only the Guide asks for other days. */
+    fun load(id: Long, offset: Int = 0, done: (List<Program>) -> Unit) {
         // Free channels have no guide of their own; borrow the one of the same channel on the Jio plan, if there is one.
-        if (id < 0) return Catalog.twinOf(id)?.let { load(it, done) } ?: done(emptyList())
-        cached(id)?.let { return done(it) }
-        pool.execute { val l = Api.epg(id); main.post { cache[id] = System.currentTimeMillis() to l; done(l) } }
+        if (id < 0) return Catalog.twinOf(id)?.let { load(it, offset, done) } ?: done(emptyList())
+        cached(id, offset)?.let { return done(it) }
+        pool.execute { val l = Api.epg(id, offset); main.post { cache[id to offset] = System.currentTimeMillis() to l; done(l) } }
     }
 
     fun now(list: List<Program>): Program? { val t = System.currentTimeMillis(); return list.firstOrNull { t in it.start..it.end } }
@@ -102,8 +103,22 @@ object Catalog {
 
     fun reset() {
         gen++; all = emptyList(); playable.clear(); scanning = false; scanned = 0; error = null
-        Store.prefs.edit().remove("ok").remove("okAt").apply()
+        Store.prefs.edit().remove("ok").remove("okAt").remove("chlist").apply()
     }
+
+    /** The channel list as last downloaded, kept so the next launch can show it before the network answers. */
+    private fun save(c: List<Channel>) {
+        val a = org.json.JSONArray()
+        c.forEach { a.put(org.json.JSONObject().put("i", it.id).put("n", it.name).put("o", it.order).put("l", it.lang).put("h", it.hd).put("g", it.logo).put("c", it.cat).put("p", it.premium)) }
+        Store.prefs.edit().putString("chlist", a.toString()).apply()
+    }
+
+    private fun loadSaved(): List<Channel> = try {
+        val a = org.json.JSONArray(Store.prefs.getString("chlist", "[]"))
+        (0 until a.length()).map { a.getJSONObject(it) }.map {
+            Channel(it.getLong("i"), it.getString("n"), it.getInt("o"), it.getInt("l"), it.getBoolean("h"), it.getString("g"), cat = it.getInt("c"), premium = it.getBoolean("p"))
+        }
+    } catch (e: Exception) { emptyList() }
 
     /** Loads the list and tests every channel (4 at a time); a fresh cache of playable ids skips the test. */
     fun start(force: Boolean) {
@@ -114,11 +129,17 @@ object Catalog {
         if (!force && (scanning || all.isNotEmpty())) { changed(); return }
         val g = ++gen
         scanning = true; error = null; scanned = 0; playable.clear(); if (force) all = emptyList()
+        // Show the last known list at once (favourites, Home, Guide) while the network refresh runs; a rescan replaces it.
+        val saved = if (force) emptyList() else loadSaved()
+        val savedOk = Store.prefs.getString("ok", "")!!.split(",").mapNotNull { it.toLongOrNull() }
+        val seeded = saved.isNotEmpty() && savedOk.isNotEmpty()
+        if (seeded) { all = saved; playable.addAll(savedOk) }
         changed()
         Thread {
             try {
                 try { Api.beginSession() } catch (e: Exception) { android.util.Log.d("Vistaar", "beginsession failed: $e") }
                 val c = Api.channels()
+                save(c)
                 val sp = Store.prefs
                 val cached = sp.getString("ok", "")!!.split(",").mapNotNull { it.toLongOrNull() }.toSet()
                 val fresh = !force && cached.isNotEmpty() && System.currentTimeMillis() - sp.getLong("okAt", 0) < CACHE_MS
@@ -133,7 +154,8 @@ object Catalog {
                     } else scan(c, g)
                 }
             } catch (e: Exception) {
-                main.post { if (g == gen) { error = "Channel list failed: ${e.message}"; scanning = false; changed() } }
+                // Offline or Jio down: the saved list stays usable; only report an error when there is nothing to show.
+                main.post { if (g == gen) { if (!seeded) error = "Channel list failed: ${e.message}"; scanning = false; changed() } }
             }
         }.start()
     }
@@ -146,6 +168,7 @@ object Catalog {
         val first = favs + recentIds(); val langs = Store.langs
         val c = all.sortedBy { if (it.id in first) 0 else if (langs.isEmpty() || it.lang in langs) 1 else 2 }
         val pool = Executors.newFixedThreadPool(8)
+        val found = HashSet<Long>()
         var done = 0
         c.forEach { ch ->
             pool.execute {
@@ -157,10 +180,11 @@ object Catalog {
                 }
                 main.post {
                     if (g != gen) return@post
-                    if (ok) playable.add(ch.id)
+                    if (ok) { playable.add(ch.id); found.add(ch.id) }
                     if (!quiet) scanned++
                     if (++done == c.size) {
                         scanning = false
+                        if (!quiet) playable.retainAll(found) // drop channels the saved list had but the rescan refused
                         android.util.Log.d("Vistaar", "scan done: ${playable.size} of ${this.all.size} playable (quiet=$quiet)")
                         Store.prefs.edit().putString("ok", playable.joinToString(",")).apply()
                         if (!quiet) Store.prefs.edit().putLong("okAt", System.currentTimeMillis()).apply()

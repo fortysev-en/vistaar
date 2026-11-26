@@ -5,5 +5,6 @@ class HdTvActivity : FreeTvActivity() {
     override val hdOnly = true
     override fun pool() = Catalog.playableChannels().filter { it.hd } + Catalog.freeChannels().filter { it.hd }
     override fun catOf(ch: Channel) = if (ch.url.isEmpty()) "Jio TV" else "Free TV"
+    override val orderKey: String? = null
     override fun catOrder(counts: Map<String, Int>) = listOf("Jio TV", "Free TV").filter { it in counts }
 }

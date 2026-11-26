@@ -10,8 +10,8 @@ android {
         applicationId = "com.vistaar.tv"
         minSdk = 23
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3"
+        versionCode = 4
+        versionName = "0.4"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -27,4 +27,6 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.3.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("com.google.zxing:core:3.5.3")
+    testImplementation("junit:junit:4.13.2")
 }

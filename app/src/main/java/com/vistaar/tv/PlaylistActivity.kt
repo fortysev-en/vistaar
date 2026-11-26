@@ -10,7 +10,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 /** Free TV playlist: pick an iptv-org country playlist or type any M3U link with the on-screen keyboard. The old list is kept if the new one fails. */
-class PlaylistActivity : Activity() {
+class PlaylistActivity : Activity(), RemoteText {
+    override fun onRemoteText(s: String) { url = s.trim().take(300); update() }
     private lateinit var urlText: TextView
     private lateinit var status: TextView
     private var url = ""

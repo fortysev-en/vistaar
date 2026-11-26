@@ -28,6 +28,8 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -67,6 +69,7 @@ class PlayerActivity : Activity() {
     private lateinit var panelTitle: TextView
     private lateinit var panelList: RecyclerView
     private lateinit var errorCard: FrameLayout
+    private lateinit var noAudio: TextView
     private lateinit var errTitle: TextView
     private lateinit var errMsg: TextView
     private lateinit var retryBtn: View
@@ -77,6 +80,8 @@ class PlayerActivity : Activity() {
     private var retries = 0
     private var lastId = -1L
     private var tuneAt = 0L
+    private var audit = false // debug: zap through the list and log one audio line per channel (adb shell am start ... --ez audit true)
+    private val auditNext = Runnable { logAudio(); if (index + 1 < channels.size) tune(index + 1) else android.util.Log.i("Vistaar", "audio audit done") }
     private var audioDone = -1L // channel whose remembered audio language has been applied
     private var program: Program? = null
     private var upcoming: Program? = null
@@ -101,12 +106,14 @@ class PlayerActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val want = intent.getLongExtra("id", -1)
-        channels = (if (want < 0) Catalog.freeChannels() else Catalog.playableChannels()) // free channels zap among themselves
-            .filter { !intent.getBooleanExtra("hd", false) || it.hd } // opened from the HD tab: zap through HD only
+        val ids = intent.getLongArrayExtra("ids") // the list the user was browsing (a category, Free TV, favourites): zap inside it
+        channels = if (ids != null) { val byId = (Catalog.all + Free.shown).associateBy { it.id }; ids.toList().mapNotNull { byId[it] } }
+            else (if (want < 0) Catalog.freeChannels() else Catalog.playableChannels()) // free channels zap among themselves
+                .filter { !intent.getBooleanExtra("hd", false) || it.hd } // opened from the HD tab: zap through HD only
         index = channels.indexOfFirst { it.id == want }
         if (index < 0) return finish()
 
-        player = ExoPlayer.Builder(this)
+        player = ExoPlayer.Builder(this, DefaultRenderersFactory(this).setEnableDecoderFallback(true))
             // start playing after 1s of media instead of the 2.5s default
             .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 50_000, 1_000, 2_000).build()).build().apply {
             playWhenReady = true
@@ -119,20 +126,29 @@ class PlayerActivity : Activity() {
                     if (retries++ < 2) { setMeta("Reconnecting…"); reveal(true); tune(index) }
                     else { Catalog.markBad(channels[index].id); showError("Playback error", "The stream stopped (${e.errorCodeName}). Check your connection and try again.") }
                 }
-                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { updateLabels(); applySavedAudio() }
+                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { updateLabels(); applySavedAudio(); if (audioStatus() != "NO_AUDIO_TRACK") noAudio.visibility = View.GONE }
                 override fun onPlaybackStateChanged(s: Int) {
-                    if (s == Player.STATE_READY) Catalog.clearBad(channels[index].id)
+                    if (s == Player.STATE_READY) { Catalog.clearBad(channels[index].id); ui.removeCallbacks(audioCheck); ui.postDelayed(audioCheck, 3_000) }
                     if (s == Player.STATE_READY && tuneAt != 0L) { android.util.Log.d("Vistaar", "first frame ready ${System.currentTimeMillis() - tuneAt} ms after tune"); tuneAt = 0L }
                 }
             })
         }
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onAudioCodecError(t: AnalyticsListener.EventTime, e: Exception) { android.util.Log.w("Vistaar", "audio codec error on ${channels[index].name}: $e") }
+            override fun onAudioSinkError(t: AnalyticsListener.EventTime, e: Exception) { android.util.Log.w("Vistaar", "audio sink error on ${channels[index].name}: $e") }
+        })
+        audit = intent.getBooleanExtra("audit", false)
         pv = PlayerView(this).apply { useController = false; player = this@PlayerActivity.player }
         buildOverlay(); buildPanel(); buildError()
+        noAudio = txt("This stream has no audio", 22, N.TEXT, 500).apply {
+            visibility = View.GONE; setPadding(px(26), px(14), px(26), px(14)); background = rr(0xDB16191F.toInt(), px(28), 0x24FFFFFF, px(1))
+        }
         setContentView(FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK); noClip()
             addView(pv, FrameLayout.LayoutParams(-1, -1))
             addView(hud, FrameLayout.LayoutParams(-1, -1))
             addView(panel, FrameLayout.LayoutParams(px(600), -1, Gravity.END).apply { setMargins(0, px(54), px(96), px(54)) })
+            addView(noAudio, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, px(54), px(96), 0) })
             addView(errorCard, FrameLayout.LayoutParams(-1, -1))
         })
         tune(index)
@@ -155,8 +171,6 @@ class PlayerActivity : Activity() {
         meta = txt("", 22, N.TEXT2); liveTag = liveBadge()
         tStart = txt("", 20, N.TEXT2, mono = true); tEnd = txt("", 20, N.TEXT2, mono = true); bar = Bar(this, px(3))
 
-        val up = control(R.drawable.ic_up, null, "Channel up") { tune(index - 1) }
-        val down = control(R.drawable.ic_down, null, "Channel down") { tune(index + 1) }
         val fav = control(R.drawable.ic_star_outline, "Favourite", "Toggle favourite") { toggleFav() }
         favIcon = fav.getChildAt(0) as ImageView; favLabel = fav.getChildAt(1) as TextView
         qualityBtn = control(R.drawable.ic_quality, "Quality", "Quality") { openQuality() }
@@ -168,9 +182,8 @@ class PlayerActivity : Activity() {
         guideBtn = guide
         val row = LinearLayout(this).apply {
             noClip(); gravity = Gravity.CENTER_VERTICAL
-            addView(up, LinearLayout.LayoutParams(px(64), px(64)))
-            listOf(down to 64, fav to 0, qualityBtn to 0, audio to 0, aspect to 0, guide to 0).forEach { (v, w) ->
-                addView(v, LinearLayout.LayoutParams(if (w > 0) px(w) else -2, px(64)).apply { marginStart = px(16) })
+            listOf(fav, qualityBtn, audio, aspect, guide).forEachIndexed { i, v ->
+                addView(v, LinearLayout.LayoutParams(-2, px(64)).apply { if (i > 0) marginStart = px(16) })
             }
         }
         val close = LinearLayout(this).apply {
@@ -199,7 +212,7 @@ class PlayerActivity : Activity() {
                     addView(tStart); addView(bar, LinearLayout.LayoutParams(0, px(6), 1f).apply { setMargins(px(20), 0, px(20), 0) }); addView(tEnd)
                 }, LinearLayout.LayoutParams(px(1500), -2).apply { topMargin = px(26) })
                 addView(row, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(26) })
-                addView(txt("▲ ▼ change channel   ·   OK controls   ·   Back to leave", 18, N.MUTED), LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(22) })
+                addView(txt("▲ ▼ show guide, then change channel   ·   OK controls   ·   Back to leave", 18, N.MUTED), LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(22) })
             }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM).apply { setMargins(px(96), 0, 0, px(54)) })
         }
     }
@@ -397,19 +410,37 @@ class PlayerActivity : Activity() {
 
     // ---------------------------------------------------------------- playback
 
+    /** Why a channel might be silent: no audio track in the stream, none the device can decode, none selected, or nothing reaching the output. */
+    private fun audioStatus(): String {
+        val groups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        if (groups.isEmpty()) return "NO_AUDIO_TRACK"
+        val fmts = groups.flatMap { g -> (0 until g.length).map { g.getTrackFormat(it) to g.isTrackSupported(it) } }
+        if (fmts.none { it.second }) return "UNSUPPORTED:" + fmts.joinToString(",") { it.first.sampleMimeType ?: "?" }
+        if (groups.none { it.isSelected }) return "NOT_SELECTED"
+        val f = player.audioFormat ?: return "NO_AUDIO_OUTPUT"
+        return "OK:${f.sampleMimeType}${f.codecs?.let { "/$it" } ?: ""} ${f.channelCount}ch"
+    }
+    private fun logAudio() { val ch = channels[index]; android.util.Log.i("Vistaar", "audio [${index + 1}/${channels.size}] ${ch.name} (${ch.id}${if (ch.url.isNotEmpty()) ", free" else ""}) state=${player.playbackState}: ${audioStatus()}") }
+
+    /** A few seconds after playback starts: a stream that carries no audio track at all says so, instead of just being silent. */
+    private val audioCheck = Runnable { noAudio.visibility = if (player.playbackState == Player.STATE_READY && audioStatus() == "NO_AUDIO_TRACK") View.VISIBLE else View.GONE }
+
     private fun tune(i: Int) {
+        ui.removeCallbacks(audioCheck); noAudio.visibility = View.GONE
         index = (i + channels.size) % channels.size
         val ch = channels[index]; val g = ++gen
         if (ch.id != lastId) {
             retries = 0
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO).clearOverridesOfType(C.TRACK_TYPE_AUDIO).build()
         }
+        if (ch.lang <= 0) player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setPreferredAudioLanguages().build() // free channels: drop the previous channel's preference
         if (ch.lang > 0) { // no saved choice: prefer the channel's own language, then the user's chosen ones
             val prefer = (listOfNotNull(LANG_CODES[ch.lang]) + Store.langs.mapNotNull { LANG_CODES[it] }).distinct()
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setPreferredAudioLanguages(*prefer.toTypedArray()).build()
         }
         hideError(); lastId = ch.id; program = null; upcoming = null
         tuneAt = System.currentTimeMillis()
+        if (audit) { ui.removeCallbacks(auditNext); ui.postDelayed(auditNext, 8_000) }
         showLoading()
         Thread {
             try {
@@ -446,13 +477,18 @@ class PlayerActivity : Activity() {
 
     override fun onKeyDown(code: Int, e: KeyEvent): Boolean {
         if (panelOpen || errorShown) return super.onKeyDown(code, e) // let the sheet / error buttons handle focus movement
+        val wasBarVisible = barVisible // before bump(): a hidden guide must not count as showing
         bump()
         return when (code) {
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> { tune(index - 1); true }
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> { tune(index + 1); true }
+            // Up/Down first bring up the guide on the picture; only while it is showing do they change the channel. The remote's CH +/- always change it.
+            KeyEvent.KEYCODE_DPAD_UP -> { if (wasBarVisible) tune(index - 1) else showInfo(); true }
+            KeyEvent.KEYCODE_DPAD_DOWN -> { if (wasBarVisible) tune(index + 1) else showInfo(); true }
+            KeyEvent.KEYCODE_CHANNEL_UP -> { tune(index - 1); true }
+            KeyEvent.KEYCODE_CHANNEL_DOWN -> { tune(index + 1); true }
             // Reaching here means no focused control took the key: bring the hud up and focus its controls.
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> { showInfo(focus = true); true }
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> if (!barVisible) { showInfo(focus = true); true } else super.onKeyDown(code, e)
+            KeyEvent.KEYCODE_PROG_RED -> if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) { audit = true; android.util.Log.i("Vistaar", "audio audit started at ${channels[index].name}"); tune(index); true } else super.onKeyDown(code, e) // debug builds only
             else -> super.onKeyDown(code, e)
         }
     }

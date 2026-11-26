@@ -1,6 +1,7 @@
 import { App } from './ui/app'
+import { Platform } from './platform'
 import { browserScreen } from './ui/browser'
-import { favouritesScreen } from './ui/favourites'
+import { disclaimerScreen } from './ui/disclaimer'
 import { guideScreen } from './ui/guide'
 import { homeScreen } from './ui/home'
 import { languageScreen } from './ui/language'
@@ -17,19 +18,21 @@ App.register('jiotv', () => browserScreen('jio'))
 App.register('freetv', () => browserScreen('free'))
 App.register('hd', () => browserScreen('hd'))
 App.register('guide', guideScreen)
-App.register('favs', () => favouritesScreen())
+App.register('favs', () => browserScreen('favs'))
 App.register('search', () => searchScreen())
 App.register('settings', settingsScreen)
 App.register('playlist', () => playlistScreen())
 App.register('player', playerScreen)
+App.register('disclaimer', disclaimerScreen)
 
 import * as Api from './api'
 import { Catalog } from './catalog'
 import { resolve } from './playback'
 import { Free } from './free'
 import { logoBox } from './ui/widgets'
-;(window as any).__v = { Api, Catalog, Free, logoBox, resolve } // debugging hook (used by the emulator test scripts)
+;(window as any).__v = { Api, Catalog, Free, logoBox, resolve, App } // debugging hook (used by the emulator test scripts)
 
+Platform.init()
 App.start()
 
 // Fit the 1920x1080 canvas to the window (a no-op on a 1080p TV; handy when testing on a PC).

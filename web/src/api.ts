@@ -137,9 +137,10 @@ export async function channels(): Promise<Channel[]> {
 }
 
 /** Today's programmes by start time; empty if the guide is unavailable (playback works without it). */
-export async function epg(channelId: string): Promise<Program[]> {
+/** [offset] is the day relative to today (0 today, 1 tomorrow, -1 yesterday). */
+export async function epg(channelId: string, offset = 0): Promise<Program[]> {
   try {
-    const arr = JSON.parse(await get(LISTS + `v1.3/getepg/get?offset=0&channel_id=${channelId}&langId=6`)).epg
+    const arr = JSON.parse(await get(LISTS + `v1.3/getepg/get?offset=${offset}&channel_id=${channelId}&langId=6`)).epg
     const ms = (v: number) => (v < 1e11 ? v * 1000 : v)
     return (arr || []).map((x: any): Program => ({ srno: Number(x.srno) || 0, title: String(x.showname || ''), showtime: String(x.showtime || ''), start: ms(Number(x.startEpoch)), end: ms(Number(x.endEpoch)), desc: String(x.description || '') }))
       .sort((a: Program, b: Program) => a.start - b.start)

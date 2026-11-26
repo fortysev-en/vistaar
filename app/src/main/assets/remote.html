@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Vistaar remote</title>
+<style>
+:root{--bg:#000;--s1:#0e0e12;--s2:#1c1c21;--tx:#f5f5f7;--mu:#a1a1aa;--gold:#5aa9ff;--ink:#07080a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{display:flex;flex-direction:column;align-items:center;padding:20px 20px 32px;gap:22px;max-width:460px;margin:0 auto;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+header{display:flex;align-items:center;gap:10px;align-self:flex-start;font-weight:800;font-size:22px;letter-spacing:-.03em}
+header i{color:var(--gold);font-style:normal}
+h1{margin:0;font-size:28px;letter-spacing:-.03em}
+p{margin:0;color:var(--mu)}
+button{font:inherit;color:inherit;border:0;cursor:pointer}
+.card{width:100%;background:var(--s1);border-radius:28px;padding:22px;display:flex;flex-direction:column;gap:16px}
+#pin{display:flex;flex-direction:column;gap:18px;width:100%;margin-top:6vh}
+#pin input{height:72px;border-radius:20px;border:2px solid #ffffff1f;background:var(--s2);color:var(--tx);font-size:36px;text-align:center;letter-spacing:.5em;padding-left:.5em;outline:0}
+#pin input:focus{border-color:var(--gold)}
+.go{height:64px;border-radius:999px;background:var(--tx);color:#000;font-weight:800;font-size:19px}
+.go:active{transform:scale(.98)}
+.err{color:#ff6b5e;min-height:22px}
+#rc{display:none;flex-direction:column;align-items:center;gap:22px;width:100%}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:100%;max-width:320px}
+.k{height:84px;border-radius:26px;background:var(--s2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;transition:transform .08s,background .08s}
+.k:active,.k.on{background:var(--tx);color:#000;transform:scale(.95)}
+.k svg{width:30px;height:30px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.ok{background:var(--gold);color:var(--ink);font-size:20px;font-weight:800}
+.ok:active{background:#8cc4ff}
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:100%;max-width:320px}
+.row .k{height:60px;font-size:16px;border-radius:20px}
+textarea{width:100%;height:96px;border-radius:20px;border:2px solid #ffffff1f;background:var(--s2);color:var(--tx);font:inherit;font-size:17px;padding:14px;resize:none;outline:0;user-select:text;-webkit-user-select:text}
+textarea:focus{border-color:var(--gold)}
+.hint{font-size:14px}
+body.typing{padding-bottom:calc(var(--kb,0px) + 48px)} /* room to scroll the text box above the phone keyboard */
+.tag{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:700}
+</style>
+</head>
+<body>
+<header><svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><path d="M6 11H19L38 53H26Z" fill="#f5f5f7"/><path d="M45 11H58L40.6 47.6L34.4 33.9Z" fill="#5aa9ff"/></svg>Vistaar</header>
+
+<section id="pin">
+  <div><span class="tag">Phone remote</span><h1>Enter the PIN</h1></div>
+  <p>The 4-digit PIN is shown on your TV.</p>
+  <input id="pinbox" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="PIN">
+  <div class="err" id="err" role="alert"></div>
+  <button class="go" id="goBtn" type="button">Connect</button>
+</section>
+
+<section id="rc">
+  <div class="pad" id="pad">
+    <span></span>
+    <button class="k" data-k="up" aria-label="Up"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+    <span></span>
+    <button class="k" data-k="left" aria-label="Left"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <button class="k ok" data-k="ok" data-once="1" aria-label="OK">OK</button>
+    <button class="k" data-k="right" aria-label="Right"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+    <span></span>
+    <button class="k" data-k="down" aria-label="Down"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+    <span></span>
+  </div>
+  <div class="row">
+    <button class="k" data-k="back" data-once="1">Back</button>
+    <button class="k" data-k="home" data-once="1">Home</button>
+    <button class="k" data-k="menu" data-once="1">Menu</button>
+    <button class="k" data-k="chup" data-once="1">Ch +</button>
+    <span></span>
+    <button class="k" data-k="chdown" data-once="1">Ch &minus;</button>
+  </div>
+  <div class="card">
+    <span class="tag">Type on the TV</span>
+    <textarea id="txt" placeholder="Type or paste here" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Text to send to the TV"></textarea>
+    <p class="hint" id="hint">What you type appears in the field that is open on the TV (search, playlist link).</p>
+  </div>
+</section>
+
+<script>
+(function () {
+  var token = '', $ = function (i) { return document.getElementById(i); };
+  function call(path, body) {
+    return fetch('/api/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': token }, body: JSON.stringify(body || {}) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j._s = r.status; return j; }); });
+  }
+  function show(rc) { $('pin').style.display = rc ? 'none' : 'flex'; $('rc').style.display = rc ? 'flex' : 'none'; }
+  function login() {
+    var p = $('pinbox').value.replace(/\D/g, '');
+    if (p.length !== 4) { $('err').textContent = 'Enter all 4 digits.'; return; }
+    call('pin', { pin: p }).then(function (j) {
+      if (j.token) { token = j.token; $('err').textContent = ''; show(true); }
+      else if (j._s === 429) $('err').textContent = 'Too many tries. Wait ' + (j.wait || 60) + ' seconds.';
+      else $('err').textContent = 'Wrong PIN. Check the TV.';
+    }).catch(function () { $('err').textContent = 'Can\'t reach the TV. Is it on the same Wi-Fi?'; });
+  }
+  $('goBtn').onclick = login;
+  $('pinbox').onkeydown = function (e) { if (e.key === 'Enter') login(); };
+  function press(k) {
+    if (navigator.vibrate) navigator.vibrate(8);
+    call('key', { key: k }).then(function (j) { if (j._s === 401) { token = ''; show(false); } }).catch(function () {});
+  }
+  // arrows repeat while held; the other keys fire once per tap
+  [].forEach.call(document.querySelectorAll('[data-k]'), function (b) {
+    var t1, t2, k = b.getAttribute('data-k'), once = b.hasAttribute('data-once');
+    function stop() { clearTimeout(t1); clearInterval(t2); b.classList.remove('on'); }
+    b.addEventListener('pointerdown', function (e) {
+      e.preventDefault(); b.classList.add('on'); press(k);
+      if (!once) t1 = setTimeout(function () { t2 = setInterval(function () { press(k); }, 130); }, 380);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (n) { b.addEventListener(n, stop); });
+    b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  });
+  setInterval(function () { if (token) call('state').then(function (j) { if (j._s === 401) { token = ''; show(false); } }).catch(function () {}); }, 5000); // lets the TV show that a phone is connected
+  // The phone keyboard covers the bottom of the page: when the box is focused, make room under it and scroll it into view, so what you type stays visible.
+  var ta = $('txt');
+  function lift() {
+    var vv = window.visualViewport;
+    document.body.style.setProperty('--kb', (vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0) + 'px');
+    setTimeout(function () {
+      var r = ta.getBoundingClientRect(), vh = vv ? vv.height : window.innerHeight;
+      if (r.bottom > vh - 12 || r.top < 12) window.scrollBy(0, r.bottom - vh + 28);
+    }, 150);
+  }
+  ta.addEventListener('focus', function () { document.body.classList.add('typing'); lift(); setTimeout(lift, 450); });
+  ta.addEventListener('blur', function () { document.body.classList.remove('typing'); });
+  if (window.visualViewport) ['resize', 'scroll'].forEach(function (n) { window.visualViewport.addEventListener(n, function () { if (document.activeElement === ta) lift(); }); });
+  var tm;
+  $('txt').addEventListener('input', function () {
+    clearTimeout(tm);
+    var v = this.value;
+    tm = setTimeout(function () {
+      call('text', { text: v }).then(function (j) { if (j._s === 401) { token = ''; show(false); } }).catch(function () {});
+    }, 250);
+  });
+})();
+</script>
+</body>
+</html>

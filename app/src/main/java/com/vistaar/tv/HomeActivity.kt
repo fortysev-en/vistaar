@@ -39,8 +39,9 @@ class HomeActivity : Activity() {
     private lateinit var favIcon: ImageView
     private lateinit var recent: Section
     private lateinit var favs: Section
-    private lateinit var freeRow: Section
-    private val langs = ArrayList<Section>()
+    private val catRows = ArrayList<Section>()
+    private lateinit var column: LinearLayout
+    private lateinit var newCatRow: () -> Section
     private var heroCh: Channel? = null
 
     override fun onCreate(b: Bundle?) {
@@ -126,13 +127,14 @@ class HomeActivity : Activity() {
             }
             return Section(box, title, adapter)
         }
-        recent = section(false); favs = section(true); freeRow = section(true); repeat(3) { langs.add(section(true)) }
+        recent = section(false); favs = section(true)
+        newCatRow = { section(true) }
 
-        val column = LinearLayout(this).apply {
+        column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; noClip(); setPadding(0, px(218), 0, px(80))
             addView(FrameLayout(context).apply { noClip(); addView(hero); addView(skeleton); setPadding(px(96), 0, 0, 0) },
                 LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = px(96) })
-            (listOf(recent, favs, freeRow) + langs).forEach { addView(it.box, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = px(28) }) }
+            listOf(recent, favs).forEach { addView(it.box, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = px(28) }) }
         }
         scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false; noClip(); isFillViewport = true; addView(column)
@@ -171,7 +173,7 @@ class HomeActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() { if (scroll.scrollY > 0) { scroll.smoothScrollTo(0, 0); watchBtn.requestFocus() } else confirmExit() }
 
-    private fun goLogin() { startActivity(Intent(this, LoginActivity::class.java)); finish() }
+    private fun goLogin() { startActivity(Intent(this, SplashActivity::class.java)); finish() }
 
     private fun play(ch: Channel) { startActivity(Intent(this, PlayerActivity::class.java).putExtra("id", ch.id)) }
 
@@ -181,30 +183,28 @@ class HomeActivity : Activity() {
         val loading = playable.isEmpty()
         skeleton.visibility = if (loading) View.VISIBLE else View.GONE
         hero.visibility = if (loading) View.INVISIBLE else View.VISIBLE
-        if (loading) { (listOf(recent, favs, freeRow) + langs).forEach { it.box.visibility = View.GONE }; return }
-        val target = Catalog.recents().firstOrNull() ?: Catalog.favourites().firstOrNull() ?: playable.first()
+        if (loading) { (listOf(recent, favs) + catRows).forEach { it.box.visibility = View.GONE }; return }
+        val target = Catalog.recents().firstOrNull() ?: Catalog.favourites().firstOrNull() ?: categoryRows().firstOrNull()?.second?.firstOrNull() ?: playable.first()
         if (heroCh?.id != target.id) { heroCh = target; bindHero(target) }
         refreshRows()
     }
 
     private fun refreshRows(force: Boolean = false) {
         forceRows = force
-        val playable = homePool()
-        val recents = Catalog.recents()
-        show(recent, if (recents.isNotEmpty()) "Recently watched" else "Channels for you", recents.ifEmpty { playable.take(12) })
+        show(recent, "Recently watched", Catalog.recents())
         show(favs, "Your favourites", Catalog.favourites())
-        val free = Catalog.freeChannels()
-        show(freeRow, "Free TV  ·  ${free.size} channels", free.take(14))
-        val byLang = playable.groupBy { it.lang }
-        val order = byLang.keys.sortedWith(compareBy({ if (it == 1) 0 else if (it == 6) 1 else 2 }, { -byLang.getValue(it).size }))
-        langs.forEachIndexed { i, s ->
-            val l = order.getOrNull(i)
-            if (l == null) show(s, "", emptyList()) else show(s, "${langName(l)}  ·  ${byLang.getValue(l).size} channels", byLang.getValue(l).take(14))
+        val rows = categoryRows()
+        while (catRows.size < rows.size) newCatRow().also { catRows.add(it); column.addView(it.box, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = px(28) }) }
+        catRows.forEachIndexed { i, s ->
+            val r = rows.getOrNull(i)
+            if (r == null) show(s, "", emptyList()) else show(s, "${GENRES.getValue(r.first)}  ·  ${r.second.size} channels", r.second.take(14))
         }
         heroCh?.let { bindFav(it) }
     }
 
     private var forceRows = false
+
+    private fun categoryRows() = HomeRows.build(Catalog.playableChannels(), Catalog.freeChannels(), Store.genres, Store.langs.toList()) { Free.catName(it.lang) }
 
     /** Jio channels; if the scan finished with none (e.g. the Jio session expired), the free channels so Home isn't stuck loading. */
     private fun homePool() = Catalog.playableChannels().ifEmpty { if (Catalog.scanning) emptyList() else Catalog.freeChannels() }

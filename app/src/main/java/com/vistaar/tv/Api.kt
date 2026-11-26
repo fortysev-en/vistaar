@@ -189,8 +189,9 @@ object Api {
     }
 
     /** Today's programmes by start time; empty if the EPG is unavailable (playback works without it). */
-    fun epg(channelId: Long): List<Program> = try {
-        val arr = JSONObject(get(LISTS + "v1.3/getepg/get?offset=0&channel_id=$channelId&langId=6")).optJSONArray("epg")
+    /** Programmes of one day by start time: [offset] 0 is today, 1 tomorrow, -1 yesterday. Empty if the guide is unavailable. */
+    fun epg(channelId: Long, offset: Int = 0): List<Program> = try {
+        val arr = JSONObject(get(LISTS + "v1.3/getepg/get?offset=$offset&channel_id=$channelId&langId=6")).optJSONArray("epg")
         fun ms(v: Long) = if (v < 100_000_000_000L) v * 1000 else v
         (0 until (arr?.length() ?: 0)).map { arr!!.getJSONObject(it) }
             .map { Program(it.optLong("srno"), it.optString("showname"), it.optString("showtime"), ms(it.optLong("startEpoch")), ms(it.optLong("endEpoch")), it.optString("description")) }
@@ -290,10 +291,15 @@ object Store {
     val loggedIn get() = sso.isNotEmpty()
     /** "Continue with free channels": no Jio sign-in, only the free playlist. */
     var freeOnly: Boolean get() = sp.getBoolean("freeOnly", false); set(v) { sp.edit().putBoolean("freeOnly", v).apply() }
+    /** Version of the disclaimer the user accepted (0 = never); see DisclaimerActivity.VERSION. */
+    var disclaimerV: Int get() = sp.getInt("disclaimerV", 0); set(v) { sp.edit().putInt("disclaimerV", v).apply() }
     val hasAccess get() = loggedIn || freeOnly
     /** Chosen Jio language ids. [langsDone] with an empty set means "all languages". */
     val langs: Set<Int> get() = s("langs").split(",").mapNotNull { it.toIntOrNull() }.toSet()
     val langsDone get() = sp.getBoolean("langsDone", false)
+    /** Favourite categories (Jio genre ids), most wanted first: Home lists its rows in this order. */
+    val genres: List<Int> get() = s("genres").split(",").mapNotNull { it.toIntOrNull() }.filter { it in GENRES }
+    fun setGenres(l: Collection<Int>) { sp.edit().putString("genres", l.joinToString(",")).apply() }
     fun setLangs(l: Set<Int>) { sp.edit().putString("langs", l.joinToString(",")).putBoolean("langsDone", true).apply() }
     var playlistUrl: String get() = s("playlist").ifEmpty { Free.DEFAULT }; set(v) { sp.edit().putString("playlist", v).apply() }
     fun audioPref(id: Long) = s("aud.$id")

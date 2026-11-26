@@ -23,6 +23,9 @@ export const Store = {
   get loggedIn() { return this.sso !== '' },
   get freeOnly() { return get('freeOnly') === '1' },
   set freeOnly(v: boolean) { if (v) set('freeOnly', '1'); else del('freeOnly') },
+  /** Version of the disclaimer the user accepted (0 = never). */
+  get disclaimerV() { return Number(get('disclaimerV') || 0) },
+  set disclaimerV(v: number) { set('disclaimerV', String(v)) },
   get hasAccess() { return this.loggedIn || this.freeOnly },
   save(s: { sso: string; auth: string; refresh: string; lb: string; uniqueId: string; subscriberId: string; uid: string }) {
     for (const k of Object.keys(s) as Array<keyof typeof s>) set(k, s[k])
@@ -33,6 +36,10 @@ export const Store = {
   get langs(): number[] { return get('langs').split(',').map(Number).filter((n) => n > 0) },
   get langsDone() { return get('langsDone') === '1' },
   setLangs(l: number[]) { set('langs', l.join(',')); set('langsDone', '1') },
+
+  /** Favourite categories (Jio genre ids), most wanted first: Home lists its rows in this order. */
+  get genres(): number[] { return get('genres').split(',').map(Number).filter((n) => n > 0) },
+  setGenres(g: number[]) { set('genres', g.join(',')) },
 
   get playlistUrl() { return get('playlist') || DEFAULT_PLAYLIST },
   set playlistUrl(v: string) { set('playlist', v) },

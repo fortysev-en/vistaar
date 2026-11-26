@@ -21,7 +21,7 @@ Vistaar for webOS is not in the LG Content Store, so it is installed through LG'
 
 ## 2. On the computer
 
-1. Download **`Vistaar-webOS-Installer.zip`** and unzip it anywhere. Nothing is installed on your computer.
+1. Download **`Vistaar-webOS-Installer-0.4.0.zip`** and unzip it anywhere. Nothing is installed on your computer.
 2. Double-click **`Install Vistaar.bat`**.
 3. Type the TV's **IP address** and the **passphrase** when asked. Wait for **"Done!"**.
 
@@ -83,7 +83,7 @@ Send the developer your TV model, the webOS version, what you did and what you s
    ```bash
    ares-setup-device --add mytv --info "{'host':'192.168.1.50','port':'9922','username':'prisoner'}"
    ares-novacom --device mytv --getkey          # asks for the passphrase
-   ares-install --device mytv com.vistaar.tv.webos_0.3.0_all.ipk
+   ares-install --device mytv com.vistaar.tv.webos_0.4.0_all.ipk
    ares-launch --device mytv com.vistaar.tv.webos
    ```
 
@@ -96,7 +96,7 @@ Prefer a window instead of commands? **webOS Dev Manager** (free, open source) d
 ```bash
 cd web && npm install && cd ../webos && npm install
 npm run package                      # builds webos/out/com.vistaar.tv.webos_<version>_all.ipk
-cd ../installer && node build.mjs    # builds installer/out/Vistaar-webOS-Installer.zip
+cd ../installer && node build.mjs    # builds installer/out/Vistaar-webOS-Installer-<version>.zip
 ```
 
 The `.ipk` contains the app (`webos/app`) and a small helper service (`webos/services/com.vistaar.tv.webos.service`). The service fetches the 16-byte stream keys for encrypted Jio channels, because Jio's key server rejects the `Origin` header a web app always sends. It only talks to `*.jio.com` hosts.

@@ -9,11 +9,11 @@ import { fmtTime, langName, liveBadge, logoBox, progressBar } from './widgets'
 
 /** Full-screen playback: info overlay, channel zapping with neighbour prefetch, quality/audio sheet, error card. Port of PlayerActivity. */
 
-interface Params { id: string; list?: 'jio' | 'free' | 'hd'; from?: { name: Name; params?: any } }
+interface Params { id: string; list?: 'jio' | 'free' | 'hd' | 'favs'; chs?: Channel[]; from?: { name: Name; params?: any } }
 
 export function playerScreen(p: Params): Screen {
   const want = p.id
-  let channels: Channel[] = (want[0] === 'f' ? Catalog.freeChannels() : Catalog.playableChannels()).filter((c) => p.list !== 'hd' || c.hd)
+  let channels: Channel[] = p.chs && p.chs.length ? p.chs : p.list === 'favs' ? Catalog.favourites() : (want[0] === 'f' ? Catalog.freeChannels() : Catalog.playableChannels()).filter((c) => p.list !== 'hd' || c.hd)
   let index = channels.findIndex((c) => c.id === want)
   const leave = () => App.go(p.from ? p.from.name : 'home', p.from ? p.from.params : undefined)
   if (index < 0) { setTimeout(leave, 0); return { el: h('div', { class: 'screen player' }) } }
@@ -33,20 +33,19 @@ export function playerScreen(p: Params): Screen {
   const bar = progressBar(0)
   const timeRow = h('div', { class: 'ptime' }, tStart, bar, tEnd)
   const ctl = (ic: string, label: string | null, click: () => void) => h('div', { class: 'btn' + (label ? '' : ' round'), f: true, onclick: click }, icon(ic, 24), label)
-  const upB = ctl('up', null, () => tune(index - 1)), downB = ctl('down', null, () => tune(index + 1))
   const favB = ctl('starO', 'Favourite', () => { Catalog.toggleFav(channels[index].id); labels(); bump() })
   const qualB = ctl('quality', 'Quality', () => openQuality())
   const audB = ctl('audio', 'Audio', () => openAudio())
   const aspB = ctl('aspect', 'Fit', () => { aspect = (aspect + 1) % ASPECTS.length; video.style.objectFit = ASPECTS[aspect][0]; labels(); bump() })
   const guideB = ctl('guide', 'Guide', () => { const c = channels[index]; App.go('guide', { id: c.id, from: { name: 'player', params: p } }) })
-  const controls = h('div', { class: 'ctl' }, upB, downB, favB, qualB, audB, aspB, guideB)
+  const controls = h('div', { class: 'ctl' }, favB, qualB, audB, aspB, guideB)
   const hud = h('div', { class: 'hud hide' },
     h('div', { class: 'grad' }),
     h('div', { class: 'btn small close', f: true, onclick: () => leave() }, icon('left', 22), 'Back to channels'),
     h('div', { class: 'info' },
       h('div', { class: 'ch' }, logoSlot, h('div', null, chName, chNum), star),
       ptitle, h('div', { class: 'pmeta' }, liveBadge(), pmeta), timeRow, controls,
-      h('div', { class: 'tip' }, '▲ ▼ change channel   ·   OK controls   ·   Back to leave')))
+      h('div', { class: 'tip' }, '▲ ▼ show the guide, then change channel   ·   OK controls   ·   Back to leave')))
 
   // ---- panel + error
   const panelTitle = h('h3'), panelList = h('div')
@@ -181,8 +180,12 @@ export function playerScreen(p: Params): Screen {
     onKey(a) {
       if (panelOpen || errorShown) return false // let the sheet / error buttons handle focus
       bump()
-      if (a.type === 'chUp' || (a.type === 'dir' && a.dir === 'up')) { tune(index - 1); return true }
-      if (a.type === 'chDown' || (a.type === 'dir' && a.dir === 'down')) { tune(index + 1); return true }
+      if (a.type === 'chUp') { tune(index - 1); return true }
+      if (a.type === 'chDown') { tune(index + 1); return true }
+      if (a.type === 'dir' && (a.dir === 'up' || a.dir === 'down')) { // first press shows what is on; the next one changes channel
+        if (!hudOn()) { showInfo(); return true }
+        tune(index + (a.dir === 'up' ? -1 : 1)); return true
+      }
       if (a.type === 'ok') { if (!hudOn() || !focused() || !el.contains(focused())) { showInfo(true); return true } return false }
       if (a.type === 'dir' && !hudOn()) { showInfo(true); return true }
       return false

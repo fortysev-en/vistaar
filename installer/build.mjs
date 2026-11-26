@@ -1,12 +1,13 @@
-// Builds installer/out/Vistaar-webOS-Installer.zip: the template + a portable Node + LG's ares tools + the newest .ipk from ../webos/out.
+// Builds installer/out/Vistaar-webOS-Installer-<version>.zip (the version is the app's, from ../webos/package.json): the template + a portable Node + LG's ares tools + the newest .ipk from ../webos/out.
 // Run from the installer folder: node build.mjs   (needs `npm run package` in ../webos first, and `npm install` there for the tools)
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync, statSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 
 const here = resolve('.')
 const stage = join(here, 'out', 'Vistaar-webOS')
-const zip = join(here, 'out', 'Vistaar-webOS-Installer.zip')
+const version = JSON.parse(readFileSync(resolve('..', 'webos', 'package.json'), 'utf8')).version
+const zip = join(here, 'out', `Vistaar-webOS-Installer-${version}.zip`)
 const cliSrc = resolve('..', 'webos', 'node_modules', '@webos-tools', 'cli')
 const outDir = resolve('..', 'webos', 'out')
 

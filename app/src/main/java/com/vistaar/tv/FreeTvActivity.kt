@@ -25,6 +25,13 @@ open class FreeTvActivity : Activity() {
     protected open fun pool(): List<Channel> = Catalog.freeChannels()
     protected open fun catOf(ch: Channel): String = Free.catName(ch.lang)
     protected open fun catOrder(counts: Map<String, Int>): List<String> = Free.cats.filter { it in counts }
+    /** Text for an empty list, or null for the default. */
+    protected open fun emptyMessage(): String? = null
+    protected open val hint = "OK to watch  ·  Hold OK to favourite  ·  ◀ categories"
+    /** Key of the viewer's saved category order, or null when the categories are fixed (HD and Favourites). */
+    protected open val orderKey: String? = "free"
+    /** Called after a long-press toggled the favourite of [ch]. */
+    protected open fun onFavToggled(ch: Channel) {}
 
     private data class Cat(val name: String?, val count: Int) // name null = all
 
@@ -51,7 +58,7 @@ open class FreeTvActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.hasAccess) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (!Store.hasAccess) { startActivity(Intent(this, SplashActivity::class.java)); finish(); return }
         header = Header(this, this::class.java)
         backdrop = ArtView(this).apply { alpha = 0.28f }
 
@@ -85,7 +92,7 @@ open class FreeTvActivity : Activity() {
             addView(pMeta, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(8) })
             addView(pNote, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(20) })
             addView(LinearLayout(context).apply { noClip(); addView(watchBtn, LinearLayout.LayoutParams(-2, px(60))) }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(24) })
-            addView(txt("OK to watch  ·  Hold OK to favourite  ·  ◀ categories", 18, N.DIM), LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(20) })
+            addView(txt(hint, 18, N.DIM), LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(20) })
         }
         val body = LinearLayout(this).apply {
             noClip()
@@ -113,19 +120,20 @@ open class FreeTvActivity : Activity() {
 
     override fun onPause() { super.onPause(); Catalog.onChange = null; pp.release() }
 
-    private fun play(ch: Channel) { startActivity(Intent(this, PlayerActivity::class.java).putExtra("id", ch.id).putExtra("hd", hdOnly)) }
+    private fun play(ch: Channel) { startActivity(Intent(this, PlayerActivity::class.java).putExtra("id", ch.id).putExtra("hd", hdOnly).putExtra("ids", channels.map { it.id }.toLongArray())) }
 
-    private fun refresh() {
+    protected fun refresh() {
         header.update()
         val all = pool()
         val counts = all.groupingBy { catOf(it) }.eachCount()
-        val newCats = listOf(Cat(null, all.size)) + catOrder(counts).map { Cat(it, counts.getValue(it)) }
+        val names = catOrder(counts).let { l -> orderKey?.let { Order.arrange(l, it) { n -> n } } ?: l }
+        val newCats = listOf(Cat(null, all.size)) + names.map { Cat(it, counts.getValue(it)) }
         if (newCats != cats) { cats = newCats; catList.adapter?.notifyDataSetChanged() }
         if (cats.none { it.name == cat }) cat = null
         val newList = if (cat == null) all else all.filter { catOf(it) == cat }
         val firstFill = channels.isEmpty() && newList.isNotEmpty()
         if (newList != channels) { channels = newList; chList.adapter?.notifyDataSetChanged() }
-        empty.text = when {
+        empty.text = emptyMessage() ?: when {
             Free.loading || Catalog.scanning && hdOnly -> "Loading channels…"
             Free.error != null -> "Couldn't load the free channels (${Free.error}). Check your connection, then press the refresh button."
             else -> "No channels found."
@@ -133,6 +141,18 @@ open class FreeTvActivity : Activity() {
         empty.visibility = if (channels.isEmpty()) View.VISIBLE else View.GONE
         if (previewCh == null || channels.none { it.id == previewCh?.id }) channels.firstOrNull()?.let { preview(it) }
         if (firstFill) chList.post { chList.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() }
+    }
+
+    /** Hold OK on a category to move it with Up/Down. */
+    private val mover by lazy {
+        Mover(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, 1, { cats.size }, { f, t -> moveCat(f, t) }, { p -> catList.adapter?.notifyItemChanged(p) },
+            px(14), { catList.findViewHolderForAdapterPosition(it)?.itemView })
+    }
+    private fun moveCat(from: Int, to: Int) {
+        cats = Order.moved(cats, from, to)
+        catList.adapter?.apply { notifyItemMoved(from, to); notifyItemChanged(from); notifyItemChanged(to) }
+        orderKey?.let { k -> Order.save(k, cats.drop(1).mapNotNull { it.name }) }
+        catList.post { catList.findViewHolderForAdapterPosition(to)?.itemView?.requestFocus() }
     }
 
     private fun preview(ch: Channel) {
@@ -190,10 +210,12 @@ open class FreeTvActivity : Activity() {
             val c = cats[p]; val row = h.itemView as LinearLayout
             row.tag = c
             (row.getChildAt(0) as TextView).text = c.name ?: "All channels"
-            (row.getChildAt(1) as TextView).text = c.count.toString()
+            (row.getChildAt(1) as TextView).text = if (mover.on && p == mover.cur) "▲▼" else c.count.toString()
             row.paintCat(px(14), c.name == cat, row.isFocused)
+            if (mover.on && p == mover.cur) row.lifted(px(14), true)
             row.setOnClickListener { select(c.name) }
-            row.setOnKeyListener { _, code, e -> catList.stepFocus(h.bindingAdapterPosition, code, e, cats.size) }
+            if (orderKey != null) row.setOnLongClickListener { mover.begin(this@FreeTvActivity, h.bindingAdapterPosition) }
+            row.setOnKeyListener { _, code, e -> mover.key(h.bindingAdapterPosition, code, e) || catList.stepFocus(h.bindingAdapterPosition, code, e, cats.size) }
         }
     }
 
@@ -233,7 +255,7 @@ open class FreeTvActivity : Activity() {
             (v[2] as TextView).text = ch.name; (v[3] as TextView).text = langName(ch.lang) + if (ch.hd) " · HD" else ""
             (v[4] as View).visibility = if (Catalog.isFav(ch.id)) View.VISIBLE else View.GONE
             row.setOnClickListener { play(ch) }
-            row.setOnLongClickListener { Catalog.toggleFav(ch.id); notifyItemChanged(p); true }
+            row.setOnLongClickListener { Catalog.toggleFav(ch.id); notifyItemChanged(p); onFavToggled(ch); true }
             row.setOnKeyListener { _, code, e -> chKey(code, e, h.bindingAdapterPosition) }
         }
     }

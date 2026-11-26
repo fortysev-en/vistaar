@@ -6,8 +6,9 @@ import type { Channel } from '../types'
 import { App, makeHeader, type Screen } from './app'
 import { artBg, card, fmtTime, langName, liveBadge, logoBox, progressBar } from './widgets'
 import { Free } from '../free'
+import { buildRows } from '../homerows'
 
-/** Home: a hero for what you watched last, then rows (recent, favourites, free channels, languages). Port of HomeActivity. */
+/** Home: a hero for what you watched last, then rows (recent, favourites, categories). Port of HomeActivity. */
 export function homeScreen(): Screen {
   const header = makeHeader('home')
   const jio = Store.loggedIn
@@ -84,24 +85,20 @@ export function homeScreen(): Screen {
     loading.style.display = pool.length ? 'none' : ''
     hero.style.display = pool.length ? '' : 'none'
     if (!pool.length) { clear(rows); return }
-    const target = Catalog.recents()[0] || Catalog.favourites()[0] || pool[0]
+    const cats = buildRows(Catalog.playableChannels(), Catalog.freeChannels(), Store.genres, Store.langs, (c) => Free.catName(c.lang))
+    const target = Catalog.recents()[0] || Catalog.favourites()[0] || (cats[0] && cats[0].list[0]) || pool[0]
     if (!heroCh || heroCh.id !== target.id) bindHero(target)
-    const recents = Catalog.recents(), favs = Catalog.favourites(), free = Catalog.freeChannels()
-    const byLang: { [k: number]: Channel[] } = {}
-    pool.forEach((c) => { (byLang[c.lang] = byLang[c.lang] || []).push(c) })
-    const order = Object.keys(byLang).map(Number).sort((a, b) => (a === 1 ? 0 : a === 6 ? 1 : 2) - (b === 1 ? 0 : b === 6 ? 1 : 2) || byLang[b].length - byLang[a].length).slice(0, 3)
     const specs: Array<[string, Channel[], boolean]> = [
-      [recents.length ? 'Recently watched' : 'Channels for you', recents.length ? recents : pool.slice(0, 12), false],
-      ['Your favourites', favs, true],
-      ['Free TV  ·  ' + free.length + ' channels', free.slice(0, 14), true],
+      ['Recently watched', Catalog.recents(), false],
+      ['Your favourites', Catalog.favourites(), true],
     ]
-    order.forEach((l) => specs.push([langName(l) + '  ·  ' + byLang[l].length + ' channels', byLang[l].slice(0, 14), true]))
+    cats.forEach((r) => specs.push([r.name + '  ·  ' + r.list.length + ' channels', r.list.slice(0, 14), true]))
     const next = specs.map((s) => s[0] + ':' + s[1].map((c) => c.id + (Catalog.isFav(c.id) ? '*' : '')).join(',')).join('|')
     if (next === sig) return
     sig = next
     const keepFocus = focused() && rows.contains(focused())
     clear(rows)
-    specs.forEach((s, i) => { const sct = strip(s[0], s[1], i > 0 || s[1] === pool.slice(0, 12)); if (sct) rows.appendChild(sct) })
+    specs.forEach((s) => { const sct = strip(s[0], s[1], s[2]); if (sct) rows.appendChild(sct) })
     if (!keepFocus && !focused()) focusFirst('[data-watch]')
   }
 

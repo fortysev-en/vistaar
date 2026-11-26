@@ -70,7 +70,13 @@ export class Engine {
     const hls = new Hls({
       loader: KeyLoader as any, enableWorker: false, startFragPrefetch: true,
       maxBufferLength: this.preview ? 8 : 30, backBufferLength: 10,
-      xhrSetup: (xhr: XMLHttpRequest, u: string) => { if (tok && u.indexOf('__hdnea__') < 0 && u.indexOf('.pkey') < 0) xhr.open('GET', withToken(u, tok), true) },
+      xhrSetup: (xhr: XMLHttpRequest, u: string) => {
+        if (u.indexOf('.pkey') >= 0) { // the stream key: webOS fetches it through the helper service; Tizen has none, so send the headers from the page (best effort, see docs/tizen-install.md)
+          if (Platform.isTizen) { const hd = Api.authHeaders(chId, 0); Object.keys(hd).forEach((k) => { try { xhr.setRequestHeader(k, String(hd[k])) } catch { /* forbidden header: the TV sets its own */ } }) }
+          return
+        }
+        if (tok && u.indexOf('__hdnea__') < 0) xhr.open('GET', withToken(u, tok), true)
+      },
     })
     this.hls = hls
     hls.on(Hls.Events.MANIFEST_PARSED, (_e, d) => {

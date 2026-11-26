@@ -13,7 +13,8 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
 /** Search with the design's on-screen keyboard (works with a plain remote, no system keyboard needed). */
-class SearchActivity : Activity() {
+class SearchActivity : Activity(), RemoteText {
+    override fun onRemoteText(s: String) { query = s.take(40); update() }
     private lateinit var header: Header
     private lateinit var queryText: TextView
     private lateinit var hintText: TextView
@@ -28,7 +29,7 @@ class SearchActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.hasAccess) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (!Store.hasAccess) { startActivity(Intent(this, SplashActivity::class.java)); finish(); return }
         header = Header(this, SearchActivity::class.java)
 
         queryText = txt("", 36, N.TEXT, 500).apply { maxLines = 1 }

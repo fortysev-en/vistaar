@@ -23,6 +23,7 @@ class SettingsActivity : Activity() {
     private lateinit var title: android.widget.TextView
     private lateinit var intro: android.widget.TextView
     private lateinit var rowsBox: LinearLayout
+    private lateinit var scroll: android.widget.ScrollView
     private var current = 0
     private var updateState = ""
     private var signOutState = ""
@@ -35,8 +36,8 @@ class SettingsActivity : Activity() {
         Thread {
             Api.logoutRemote()
             runOnUiThread {
-                Store.clear(); Store.freeOnly = false; Catalog.reset()
-                startActivity(Intent(this, LoginActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)); finish()
+                Store.clear(); Store.freeOnly = true; Catalog.reset() // back to the free channels; Jio sign-in stays in Settings
+                startActivity(Intent(this, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)); finish()
             }
         }.start()
     }
@@ -58,7 +59,7 @@ class SettingsActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Store.init(this)
-        if (!Store.hasAccess) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (!Store.hasAccess) { startActivity(Intent(this, SplashActivity::class.java)); finish(); return }
         val checked = { Store.prefs.getLong("okAt", 0).let { if (it == 0L) "never" else SimpleDateFormat("d MMM, h:mm a", Locale.getDefault()).format(it) } }
         val info = packageManager.getPackageInfo(packageName, 0)
         val jio = Store.loggedIn
@@ -68,16 +69,21 @@ class SettingsActivity : Activity() {
             Cat("Library", R.drawable.ic_channels, "Keep the channel list and your saved channels tidy.") { listOfNotNull(
                 Row("Refresh channels", if (jio) "Re-check which channels your plan includes" else "Reload the free channel list", if (Catalog.scanning) "Checking ${Catalog.scanned}/${Catalog.all.size}" else if (jio) "Checked ${checked()}" else "", 1) { Catalog.start(true); render() },
                 Row("Languages", "Only channels in these languages are listed", langSummary(), 1) { startActivity(Intent(this, LanguageActivity::class.java)) },
+                Row("Home categories", "Choose which rows Home shows first", Store.genres.let { g -> if (g.isEmpty()) "Default order" else g.take(2).joinToString(", ") { GENRES.getValue(it) } + if (g.size > 2) " +${g.size - 2}" else "" }, 1) { startActivity(Intent(this, LanguageActivity::class.java).putExtra("categories", true)) },
                 Row("Free TV playlist", "Choose a country or paste any M3U link", playlistName(), 1) { startActivity(Intent(this, PlaylistActivity::class.java)) },
                 Row("Clear favourites", "Remove every saved channel", "${Catalog.favCount()} saved", 1) { Catalog.clearFavs(); render() },
+                Row("Reset order", "Put the tabs and categories back in their usual order", "", 1) { Order.resetAll(); render() },
                 Row("Clear recently watched", "Resets Home and the remembered audio language of each channel", "", 1) { Catalog.clearRecents(); Store.clearAudioPrefs(); render() }) },
             Cat("Account", R.drawable.ic_logout, if (jio) "Manage the account this TV is signed in to." else "You are using the free channels only.") { listOfNotNull(
                 if (jio) Row("Sign out", "Frees this TV on your Jio account and lets you use a different number", signOutState, 1, destructive = true) { signOut() }
                 else Row("Sign in to Jio", "Add your Jio channels, guide and HD", "", 1) { startActivity(Intent(this, LoginActivity::class.java).putExtra("add", true)) },
                 Row("Exit app", "Close the app", "", 1) { confirmExit() }) },
+            Cat("Remote", R.drawable.ic_phone, "Use your phone as a remote and a keyboard.") { listOf(
+                Row("Phone remote", "Navigate and type with your phone", if (RemoteHub.running) "On" else "Off", 1) { startActivity(Intent(this, RemoteActivity::class.java)) }) },
             Cat("About", R.drawable.ic_info, "Share these details if something isn’t working.") { listOfNotNull(
                 Row("App version", "", "${info.versionName} (${info.versionCode})", 2),
                 Row("Check for updates", "Looks for a newer Vistaar on GitHub", updateState, 1) { checkUpdate() },
+                Row("Disclaimer", "What Vistaar is and is not", "", 1) { startActivity(Intent(this, DisclaimerActivity::class.java).putExtra("view", true)) },
                 Row("GitHub", "Source code and releases", "fortysev-en/vistaar", 1) { openLink("https://github.com/fortysev-en/vistaar") },
                 Row("Documentation", "Guides and how it works", "fortyseven.dev/projects/vistaar", 1) { openLink("https://fortyseven.dev/projects/vistaar") },
                 Row("Device", "", "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE}", 2),
@@ -102,16 +108,28 @@ class SettingsActivity : Activity() {
                 addView(txt("Settings", 48, N.TEXT, 600).apply { letterSpacing = -0.01f }, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = px(24) })
                 addView(navBox)
             }, FrameLayout.LayoutParams(px(448), -2).apply { setMargins(px(96), px(150), 0, 0) })
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL; noClip()
-                addView(title); addView(intro, LinearLayout.LayoutParams(px(880), -2).apply { topMargin = px(8); bottomMargin = px(28) }); addView(rowsBox)
-            }, FrameLayout.LayoutParams(-1, -1).apply { setMargins(px(736), px(150), px(96), px(54)) })
+            scroll = android.widget.ScrollView(context).apply { // About has more rows than fit: scroll with the focus, with room under the last one
+                isVerticalScrollBarEnabled = false; clipToPadding = false; clipChildren = false; setPadding(px(24), px(8), px(24), px(140))
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL; noClip()
+                    addView(title); addView(intro, LinearLayout.LayoutParams(px(880), -2).apply { topMargin = px(8); bottomMargin = px(28) }); addView(rowsBox)
+                })
+            }
+            addView(scroll, FrameLayout.LayoutParams(-1, -1).apply { setMargins(px(712), px(142), px(72), 0) })
         })
         render()
     }
 
     override fun onResume() { super.onResume(); if (Store.hasAccess) { Catalog.onChange = { render() }; Catalog.start(false); render() } }
     override fun onPause() { super.onPause(); Catalog.onChange = null }
+
+    /** Left from a row goes back to the category it belongs to, not to whichever category sits level with the row. */
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT && ::rowsBox.isInitialized && rowsBox.hasFocus()) {
+            navBox.getChildAt(current)?.requestFocus(); return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
 
     private fun render(focusNav: Boolean = false) {
         if (!::cats.isInitialized) return
@@ -153,6 +171,6 @@ class SettingsActivity : Activity() {
             }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(36); marginStart = px(8) })
         }
         if (hadFocus) rowsBox.getChildAt(0)?.requestFocus()
-        if (focusNav) navBox.getChildAt(current)?.requestFocus()
+        if (focusNav) { scroll.scrollTo(0, 0); navBox.getChildAt(current)?.requestFocus() } // new category: start at the top
     }
 }

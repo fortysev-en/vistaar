@@ -1,0 +1,8 @@
+{
+  "name": "vistaar-tizen",
+  "private": true,
+  "version": "0.4.0",
+  "scripts": {
+    "package": "cd ../web && npm run build -- --tizen --min && cd ../tizen && node package.mjs"
+  }
+}

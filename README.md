@@ -4,229 +4,138 @@
 
 # Vistaar
 
-**Jio TV and free live channels for Android TV and LG webOS, built for the remote.**
+**Jio TV and free live channels on your TV, built for the remote.**
 
-[![Version](https://img.shields.io/badge/version-0.3-5aa9ff?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4-5aa9ff?style=flat-square)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Android TV](https://img.shields.io/badge/Android%20TV-6.0%2B-3ddc84?style=flat-square&logo=android&logoColor=white)](#download-and-install)
-[![LG webOS](https://img.shields.io/badge/LG%20webOS-5%2B%20beta-a50034?style=flat-square)](docs/webos-install.md)
+[![Android TV](https://img.shields.io/badge/Android%20TV-6.0%2B-3ddc84?style=flat-square&logo=android&logoColor=white)](#android-tv--google-tv)
+[![LG webOS](https://img.shields.io/badge/LG%20webOS-5%2B%20beta-a50034?style=flat-square)](#lg-webos-beta)
+[![Samsung Tizen](https://img.shields.io/badge/Samsung%20Tizen-5.5%2B%20experimental-1428a0?style=flat-square&logo=samsung&logoColor=white)](#samsung-tizen-experimental)
 
-[Download](#download-and-install) · [Features](#features) · [Changelog](#changelog) · [LG webOS](docs/webos-install.md)
+[Download](#download) · [Install](#install) · [Features](#features) · [Changelog](CHANGELOG.md)
 
 </div>
 
-Browse channels by language, check what's on now and next, keep favourites, and watch, all from the couch.
+Vistaar is an **unofficial, independent client**. You can use the free channels without signing in, or sign in with your **own** Jio number to see the channels your plan includes. It is not affiliated with, endorsed by or supported by Jio.
 
-Vistaar is an **unofficial, independent client**. You sign in with your **own** Jio mobile number and one-time code, and it shows the channels that account is entitled to. It is not affiliated with, endorsed by or supported by Jio or its owners. You can also skip Jio and use only the free channels.
+## Download
+
+| TV | Download (v0.4) |
+|---|---|
+| **Android TV / Google TV** | **[Vistaar-0.4-debug.apk](https://github.com/fortysev-en/vistaar/raw/v0.4/releases/Vistaar-0.4-debug.apk)** |
+| **LG webOS** (Windows installer) | **[Vistaar-webOS-Installer-0.4.0.zip](https://github.com/fortysev-en/vistaar/raw/v0.4/releases/Vistaar-webOS-Installer-0.4.0.zip)** |
+| **LG webOS** (app only) | [Vistaar-webOS-0.4.0.ipk](https://github.com/fortysev-en/vistaar/raw/v0.4/releases/Vistaar-webOS-0.4.0.ipk) |
+| **Samsung Tizen** | **[Vistaar-Tizen-0.4.0.wgt](https://github.com/fortysev-en/vistaar/raw/v0.4/releases/Vistaar-Tizen-0.4.0.wgt)** |
+
+<details>
+<summary>SHA-256 checksums</summary>
+
+| File | SHA-256 |
+|---|---|
+| `Vistaar-0.4-debug.apk` | `E98F4382659A97BA5210BA950A381026D056B58FF961AE94DC69D8812432A761` |
+| `Vistaar-webOS-Installer-0.4.0.zip` | `9F9F97E2C50D7D3DDB4D09FA06CBF4B2CFE935B4A32A00DC875E2F1A613F246E` |
+| `Vistaar-webOS-0.4.0.ipk` | `7EA0A62B380AFBAAC362E69B0D99CAE995F40815BCC12D323C7CFA5D007D4ACD` |
+| `Vistaar-Tizen-0.4.0.wgt` | `E07F2BA63C372FCC6DE2F4C0E365FEFB6F9EF7EC9FA9DD8D04645F18C08399E2` |
+
+</details>
+
+## Install
+
+### Android TV / Google TV
+
+1. Download the **APK** and copy it to the TV (USB drive, or an app such as *Downloader*).
+2. Open it and choose **Install**. Allow *install unknown apps* if asked.
+3. Open **Vistaar** from the app list.
+
+From a computer: turn on network debugging on the TV, then run `adb connect <TV-IP>:5555` and `adb install -r Vistaar-0.4-debug.apk`. Installing over an older version keeps your sign-in and favourites. The APK is signed with the Android debug key and is not a Play Store build.
+
+### LG webOS (beta)
+
+For 2020 TVs and newer.
+
+1. On the TV, install **Developer Mode** from the LG Content Store and sign in with a free LG developer account. Turn **Dev Mode Status** and **Key Server** ON, and note the TV's **IP address** and **passphrase**.
+2. On a Windows computer on the same network, download the **installer zip** and unzip it.
+3. Run **`Install Vistaar.bat`**, enter the IP address and passphrase, and wait for "Done!".
+
+Developer Mode needs an **Extend** every few weeks (`Extend Developer Mode.bat` does it). Some DRM-protected Jio channels don't play on webOS yet. Troubleshooting and Mac/Linux steps: **[docs/webos-install.md](docs/webos-install.md)**.
+
+### Samsung Tizen (experimental)
+
+For 2020 TVs and newer. You only need an **Android phone**, no computer.
+
+1. On the TV, open **Apps**, type **12345** on the remote, turn **Developer mode** ON and enter your **phone's IP address**. Then switch the TV fully off and on (hold the power button for 2 seconds).
+2. On the phone, on the same Wi-Fi, install **[Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung)**.
+3. Download the **`.wgt`** file to the phone.
+4. In Apps2Samsung, connect to the TV (its IP address is under Settings, General, Network, Network Status), choose the `.wgt` and install it.
+5. Open **Vistaar** from the TV's app list. Keep Developer mode on, or the app is removed.
+
+Apps2Samsung is a separate project, not made or checked by Vistaar. Jio's encrypted channels are untested on Tizen. More detail: **[docs/tizen-install.md](docs/tizen-install.md)**.
+
+## Features
+
+- **Free TV** from the community [iptv-org](https://github.com/iptv-org/iptv) playlist, with no sign-in. You can switch to another country or your own M3U link.
+- **Jio TV** with your own account: only the channels your plan includes, browsed by genre or language.
+- **Home made for you**: recently watched, favourites, then rows for the categories you pick.
+- **Programme guide** as a time grid, for Jio channels.
+- **Favourites**, **Search** and an **HD** tab.
+- **Your layout**: hold OK to rearrange the top tabs and categories. The app opens on your first tab.
+- **Player** with a guide overlay, quality, audio track and aspect controls.
+- **Phone remote** (Android TV only): use your phone as the remote and keyboard on the same Wi-Fi.
 
 ## Screenshots
-
-Captured from the 0.3 app on an Android TV (1920×1080).
 
 | Home | Jio TV |
 |---|---|
 | ![Home](docs/screenshots/home.png) | ![Jio TV](docs/screenshots/live-tv.png) |
 
-| Free TV | HD |
+| Free TV | Guide |
 |---|---|
-| ![Free TV](docs/screenshots/free-tv.png) | ![HD](docs/screenshots/hd.png) |
+| ![Free TV](docs/screenshots/free-tv.png) | ![Guide](docs/screenshots/guide.png) |
 
-| Guide | Settings |
+## Remote
+
+| Button | What it does |
 |---|---|
-| ![Guide](docs/screenshots/guide.png) | ![Settings](docs/screenshots/settings.png) |
+| **OK** | Open or play. In the player, show the controls. |
+| **Hold OK** | On a channel: add or remove a favourite. On a top tab or category: move it, then press OK to drop it. |
+| **Up / Down** in the player | Show the guide; press again to change channel. |
+| **CH + / -** | Change channel straight away. |
+| **Back** | Go back. On Home it asks before exiting. |
 
-| Star Plus HD (premium crown, guide, controls) | Sony Sports Ten 3 Hindi (free channel) |
-|---|---|
-| ![Player on Star Plus HD](docs/screenshots/player-star-plus.png) | ![Player on Sony Sports Ten 3 Hindi](docs/screenshots/player-sony-sports.png) |
+## Good to know
 
-| About | Sign in |
-|---|---|
-| ![About](docs/screenshots/about.png) | ![Sign in](docs/screenshots/sign-in.png) |
-
-## Contents
-
-- [Features](#features)
-- [Download and install](#download-and-install)
-- [Using the app](#using-the-app)
-- [Build from source](#build-from-source)
-- [Project layout](#project-layout)
-- [How it works](#how-it-works)
-- [Known limits](#known-limits)
-- [Changelog](#changelog)
-- [Legal](#legal)
-- [License](#license)
-
-## Features
-
-- **Sign in with a number and a code**, using an on-screen keypad (or the remote's number keys). You stay signed in until you sign out.
-- **Premium crown.** Channels outside the base pack (for example the Star channels) carry a small gold crown.
-- **Only what you can watch.** On first launch the app checks every channel against your account and lists only the ones your plan includes. The result is remembered for 6 hours; channels it had refused are re-tried quietly after 10 minutes (so a new channel pack shows up on its own), and **Refresh** re-checks everything.
-- **Home**: a hero for what you watched last, with the current programme, time left, description and progress; rows for recently watched, favourites and languages.
-- **Jio TV**: languages on the left, channels in the middle (with the programme on now), a preview panel on the right.
-- **Free TV**: a separate tab with the free Indian channels from the community [iptv-org](https://github.com/iptv-org/iptv) playlist (about 850, grouped by category such as News, Movies and Music). They play in the same player, can be favourited, show on Home and turn up in search. No sign-in is needed for the streams themselves, but many are offline at any given time.
-- **HD**: every HD channel in one place, from your Jio plan and from the free list, split into Jio TV and Free TV.
-- **Free-only mode**: on the sign-in screen, *Continue with free channels* skips Jio completely; add Jio later from Settings.
-- **Languages**: on first run you pick the languages you watch (several allowed); only those Jio channels are listed and checked first. Change it in Settings.
-- **Genres**: Jio TV can be browsed by Genre (Entertainment, Movies, News, Music, Kids, Sports and more) or by Language.
-- **Live preview**: the panel on the right plays a muted live picture of the focused channel after a short pause.
-- **Remembered audio**: the audio language you pick on a channel is used the next time you watch it.
-- **Your own playlist**: Settings → Free TV playlist switches the free list to another country or any M3U link (India by default).
-- **Updates**: the app checks GitHub for a newer release and offers to install it (also in Settings → About).
-- **Device limit**: if Jio says the account is on too many devices, the sign-in offers to log out the other devices and finishes signing in. *Sign out* in Settings now also tells Jio, so this TV stops counting against the limit.
-- **Guide**: pick a channel and see today's programmes.
-- **Search**: an on-screen keyboard that works with any remote, and recent searches.
-- **Favourites**: hold OK on any channel to save it; sort and edit mode on its own screen.
-- **Player**: channel up/down, quality (Auto or a fixed resolution), audio track, aspect (Fit, Zoom, Stretch), favourite, and a guide shortcut. The overlay hides itself after a few seconds.
-- **Settings**: refresh channels, clear favourites or history, sign out, app and device details.
-- **Refresh** button in the header on every screen (it spins while it re-checks your plan).
-- Designed for 1920×1080 and scales to other TV resolutions.
-
-## Download and install
-
-### Android TV / Google TV
-
-1. Download **[`Vistaar-0.3-debug.apk`](releases/Vistaar-0.3-debug.apk)** (Android 6.0 or newer).
-2. Copy it to the TV (USB drive, or an app such as *Downloader*), open it and choose **Install**. Allow *install unknown apps* if asked.
-3. Open **Vistaar** from the app list.
-
-Prefer a computer? Turn on USB/network debugging on the TV, then run `adb connect <TV-IP>:5555` and `adb install -r Vistaar-0.3-debug.apk`.
-
-SHA-256: `D93A6F4B2E9EE74BD1C58FAEFAFF2C79A79D674FE396ED23E906930FCE3E3E8`. The APK is signed with the Android debug key, so it is for your own TV and not a Play Store build. To update, install a newer APK over the old one; your sign-in and favourites are kept.
-
-### LG webOS (beta, 2020 TVs and newer)
-
-1. On the TV, install **Developer Mode** from the LG Content Store, sign in with a free LG developer account, turn **Dev Mode Status** and **Key Server** ON (leave *Clear Cache Data* OFF), and note the TV's **IP address** and **passphrase**.
-2. On a Windows computer on the same network, download **[`Vistaar-webOS-Installer.zip`](releases/Vistaar-webOS-Installer.zip)** and unzip it.
-3. Run **`Install Vistaar.bat`**, type the IP address and passphrase, and wait for "Done!".
-
-Developer Mode needs an **Extend** every few weeks (`Extend Developer Mode.bat` does it). Full steps, troubleshooting and manual commands for Mac/Linux: **[docs/webos-install.md](docs/webos-install.md)**. A few DRM-protected Jio channels are not supported on webOS yet.
-
-SHA-256 of the zip: `8C4BFAD743C6A733C6569FBF8C8EF245FE72D91C9B798A8072B5E773517C10A0`.
-
-## Using the app
-
-| Remote | What it does |
-|---|---|
-| **D-pad** | Move focus. The focused item turns white. |
-| **OK** | Open or play. In the player, with the overlay hidden, it shows the controls. |
-| **Hold OK** on a channel | Add or remove it from favourites. |
-| **Up / Down** in the player | Next or previous channel (also the channel keys, if your remote has them). |
-| **Back** | Hide the overlay, then leave the player. On Home it asks before exiting. |
-| **Number keys** | Type digits on the sign-in screen. |
+- Free channels come and go. Some are offline, region-locked or have no audio.
+- Which Jio channels you see depends on your plan.
+- Vistaar is not on any TV app store.
 
 ## Build from source
 
-You need:
+**Android TV** (JDK 17 and Android SDK 34; set `sdk.dir` in `local.properties`):
 
-- **JDK 17**
-- **Android SDK** with Platform 34 and Build-Tools 34 (installing Android Studio is the easiest way)
-- Internet access on the first build (Gradle and dependencies are downloaded)
-
-1. Create `local.properties` in the project root, pointing at your SDK (it is git-ignored):
-
-   ```properties
-   sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
-   ```
-
-   On macOS or Linux: `sdk.dir=/Users/<you>/Library/Android/sdk` or `sdk.dir=/home/<you>/Android/Sdk`.
-
-2. Build the debug APK:
-
-   ```bash
-   ./gradlew assembleDebug        # Windows: gradlew.bat assembleDebug
-   ```
-
-3. The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
-
-You can also open the folder in Android Studio and run it on a TV emulator or a connected TV.
-
-Dependencies: AndroidX Media3 1.3.1 (ExoPlayer with HLS and DASH), OkHttp 4.12, AndroidX RecyclerView. Kotlin 1.9, Android Gradle Plugin 8.5.
-
-## Project layout
-
-```
-app/src/main/
-├── AndroidManifest.xml
-├── java/com/vistaar/tv/
-│   ├── Api.kt              Network calls: sign-in, channel list, programme guide, stream URL, session storage
-│   ├── Catalog.kt          Channel list, "which channels does this account get", favourites, recents, programme cache
-│   ├── Theme.kt            Design system: colours, focus states, artwork, header, cards, dialogs
-│   ├── Design.kt           Image loader and small shared helpers
-│   ├── LoginActivity.kt    Mobile number and OTP screens
-│   ├── HomeActivity.kt     Hero and rows
-│   ├── LiveTvActivity.kt   Categories, channel list, preview
-│   ├── FreeTvActivity.kt   Same layout for the free iptv-org channels
-│   ├── HdTvActivity.kt     The HD tab (same screen, HD channels only)
-│   ├── Free.kt             Downloads and parses the free playlist (iptv-org India by default)
-│   ├── Streams.kt          How a channel's stream is looked up and played (player and preview share it)
-│   ├── PreviewPlayer.kt    Muted live picture in the Jio TV / Free TV preview panel
-│   ├── LanguageActivity.kt First-run language choice
-│   ├── PlaylistActivity.kt Free TV playlist picker and link keyboard
-│   ├── Updater.kt          GitHub release check and installer hand-off
-│   ├── GuideActivity.kt    Programme guide
-│   ├── SearchActivity.kt   On-screen keyboard search
-│   ├── FavoritesActivity.kt
-│   ├── SettingsActivity.kt Library, account, about
-│   ├── PlayerActivity.kt   Playback, overlay, quality/audio panel, error card
-│   └── PlaylistFix.kt      HLS playlist workaround (see below)
-└── res/                    Icons, TV banner, wordmark, vector icons
-releases/                   Built APK
-web/                        Platform-neutral web app (TypeScript) used by the LG webOS build
-webos/                      LG webOS packaging: appinfo, helper service for stream keys, .ipk output
-webos-probe/                Small compatibility test app for real LG TVs
-installer/                  Builds the Windows one-click installer for the LG app
-docs/screenshots/           README images
+```bash
+./gradlew assembleDebug        # Windows: gradlew.bat assembleDebug
 ```
 
-## How it works
+**LG webOS** and **Samsung Tizen** (Node.js; both use the web app in `web/`):
 
-- **Sign in.** The app sends your number to Jio's sign-in service, which texts you a code; the code is verified and the session tokens it returns are stored on the TV, in the app's private storage.
-- **Channel list and "your plan".** The app downloads the full channel list, then asks for each channel's stream the same way a playback request would. Channels that return a stream are the ones your account can watch; the rest (for example premium channels outside your plan) are hidden. This takes a minute or two on first launch.
-- **Free TV.** The India playlist (`https://iptv-org.github.io/iptv/countries/in.m3u`) is downloaded, cached for 6 hours and parsed into channels. Their streams are played directly with their own user agent and referrer where the playlist gives one; your Jio sign-in tokens are never sent to them. Free channels have no programme guide.
-- **Programme data.** Today's schedule per channel comes from Jio's guide service and is cached for two minutes.
-- **Playback.** Streams are played with ExoPlayer. While you watch, the next and previous channel are looked up in the background, so changing channel starts in well under a second.
-- **Playback (details).** Streams are played with ExoPlayer. Most channels are HLS; DASH channels use the TV's Widevine DRM. Two details matter: the stream host hands out a cookie that must be replayed on later requests, and the master playlists advertise I-frame (trick-play) playlists that the server refuses, which would stop playback, so `PlaylistFix.kt` removes those lines before parsing.
-- **The design.** The interface follows the "Vistaar" design board (a dark, white-focus system with a blue accent), scaled from a 1920×1080 canvas.
+```bash
+cd web && npm install
+cd ../webos && npm install && npm run package
+cd ../tizen && npm run package
+```
 
-## Known limits
-
-- **Plan-gated channels.** About 195 of roughly 1,050 channels were refused for the account this was built and tested with, and are therefore hidden. A different account will see a different list.
-- **Free channels are not vetted.** The iptv-org list is community-maintained; links come and go, some are geo-blocked, and DRM-protected or YouTube-only entries are skipped or fail to play. Cleartext (`http://`) streams are allowed for this reason.
-- **Sessions.** When Jio answers 419 (access token expired) the app swaps the refresh token for a new one and retries. If that is rejected too, sign in again. Channels the server answers with "No eligible plans" are hidden; that depends on your Jio plan, not on the app.
-- **Stream tokens expire.** The player reconnects up to twice on an error, then shows a retry card.
-- **Artwork is generated.** The service provides no programme stills, so cards use gradient artwork chosen per channel.
-- **Language names** (Hindi, English, Tamil and so on) are mapped from Jio's numeric language ids using public knowledge, not from official data. An unknown id shows as "Other".
-- **Untested areas.** Search with real input, the favourites grid in edit mode, DRM channels on every TV model, and most error states have had limited testing. It was tested on one Android 11 TV.
-- **Debug signing and no automated tests.**
-- **Updates.** The in-app updater needs each GitHub release to carry the APK, and only installs over the existing app when both are signed with the same key.
-- **Free TV and languages.** The free playlist has no language information, so the language choice is applied using iptv-org's per-language lists; free channels that are in none of them are hidden while a language is chosen. Choose *All languages* to see everything.
-- **Not on the Play Store**, and not intended for it.
-
-## Changelog
-
-Latest releases (full history in [CHANGELOG.md](CHANGELOG.md)):
-
-| Version | Date | Highlights |
-|---|---|---|
-| **0.3** (build 3) | 2026-11-20 | LG webOS beta; premium crown; guide for free channels that are also on Jio; plan re-check; language and genre browsing; live preview; free-only mode; custom Free TV playlist; device-limit logout; in-app updates; "Live TV" renamed **Jio TV** |
-| **0.2** (build 2) | 2026-11-02 | Free TV and HD tabs; faster channel changes; steadier category focus; token refresh on HTTP 419 |
-| **0.1** (build 1) | 2026-10-28 | First release |
+The Android app is in `app/`, the shared web app in `web/`, the platform packaging in `webos/` and `tizen/`, and the Windows installer builder in `installer/`.
 
 ## Legal
 
-- Vistaar is a personal project for use with **your own subscription**. Use it only with an account you are entitled to use.
-- It does **not** bypass payment, plan checks or DRM: channels outside your plan stay hidden, and protected streams are played through the TV's own Widevine.
-- The Free TV channels come from the third-party iptv-org project and belong to their broadcasters; Vistaar does not host or control them.
-- Jio, JioTV and related names and logos belong to their owners. Channel names, logos and programme titles shown in the screenshots belong to their broadcasters.
+- Use Vistaar only with a Jio account you are entitled to use.
+- It does **not** bypass payment, plan checks or DRM. Channels outside your plan stay hidden.
+- Free channels come from the third-party iptv-org project and belong to their broadcasters. Vistaar does not host or control them.
+- Jio, JioTV, channel names, logos and programme titles belong to their owners.
 - Provided as is, with no warranty.
-
-## Credits
-
-- Interface, logo (the "Blade V" mark), app icon and TV banner: the Vistaar brand board.
-- Studio mark on the About screen: fortyseven, <https://fortyseven.dev>.
 
 ## License
 
-Vistaar is released under the [MIT License](LICENSE). The licence covers the source code in this repository. It does not cover Jio, JioTV, channel names, logos or streams, which belong to their owners, nor the fortyseven studio mark, which belongs to fortyseven.
+The source code is under the [MIT License](LICENSE). The licence does not cover Jio, channel names, logos or streams, nor the [fortyseven](https://fortyseven.dev) studio mark.
 
 Third-party components keep their own licences: AndroidX Media3, OkHttp and AndroidX (Apache-2.0), hls.js (Apache-2.0), and the iptv-org playlists (Unlicense).
